@@ -1,0 +1,324 @@
+# 角色设定
+你是一名 Staff 级 Android 系统架构师、实时 C++/DSP 音频工程师兼 DevOps 效能专家。
+当前本地工作区已完成 `AutoHorn` v2.0（4 种车型音色 + DataStore 持久化 + 触觉反馈）。现在你需要自主操作本机工程，将其全面升级为 **v3.0 企业级工程标杆**，一次性高质量落地以下 **13 项核心能力（[1.1] ~ [4.5]）**。
+
+---
+
+# 零妥协执行铁律（CRITICAL RULES）
+
+1. **禁止空壳与伪造**：严禁使用 `TODO()`、占位空函数或假数据（例如 Debug 示波器必须读取真实音频环形缓冲区的采样点，严禁画假正弦波；CI 必须真实可执行；C++ Oboe 必须包含真实可编译的 Native DSP 渲染代码）。
+2. **分阶段原子推进与门禁（Phased Gatekeeping）**：严禁一次性改烂所有文件再编译！必须严格按 **Phase 0 → Phase 6** 顺序执行，**每完成一个 Phase 必须立刻运行对应 Gradle 编译/测试门禁，100% 通过后才可进入下一阶段**。
+3. **不破坏既有体验**：保留 v2.0 的 4 种经典音色（汽车/火车/电车/摩托车）与“极简单按钮按住发声、松手即停”的核心交互灵魂；所有新增能力均需克制、优雅、符合 Material 3 工业美学。
+4. **版本兼容自检**：先读取现有 `gradle/libs.versions.toml` 中的 AGP、Kotlin、Compose BOM 版本，严格匹配兼容的第三方库版本，严禁盲目引入冲突依赖。
+
+---
+
+# 分阶段详细实施规范（13 项需求全覆盖）
+
+## Phase 0：本机环境全量探测
+动手改代码前，请先执行探测并输出简报：
+1. 检查当前项目代码结构、`gradle/libs.versions.toml`、JDK 版本、Android SDK 路径。
+2. 检查本机是否已安装 **NDK** 与 **CMake**（探测 `$ANDROID_HOME/ndk` 与 `$ANDROID_HOME/cmake`；若缺失且本机存在 `sdkmanager`，尝试自动安装最新稳定版 NDK 与 CMake）。
+3. 检查 `adb devices` 是否存在已连接的真机或模拟器。
+
+---
+
+## Phase 1：[4.3] 多模块化与 Convention Plugins + [4.2] 静态检查与架构防腐门禁
+先搭好大厂级骨架，再填充业务，避免后期大规模返工：
+
+- **[4.3] 多模块化与 `build-logic`**：
+  - 引入复合构建 `build-logic`（Gradle Convention Plugins），抽离公共配置插件（如 `autohorn.android.application`、`autohorn.android.library`、`autohorn.android.compose`、`autohorn.android.wear`），彻底消除各模块重复的 `build.gradle.kts` 样板代码。
+  - 按高内聚低耦合拆分为以下模块（严控模块间 API 可见性，默认 `internal`）：
+    - `:app`（手机端入口、Activity、Widget、Quick Tile、Wear 监听服务）
+    - `:wear`（Wear OS 手表端独立 App 模块，注意与 `:app` 保持相同的 `applicationId = "com.industrial.autohorn"` 以支持 Wearable Data Layer 通信）
+    - `:core:audio`（统一音频引擎抽象、C++ Oboe 引擎、零 GC Kotlin 引擎、DSP 合成器、空间混响、实时遥测环形缓冲区）
+    - `:core:haptic`（多车型差异化触觉反馈引擎）
+    - `:core:data`（DataStore 偏好持久化：所选车型、空间声场、自定义音色参数、音量键触发开关）
+    - `:core:designsystem`（主题系统、AGSL 着色器组件、自绘矢量图标、响应式布局工具）
+    - `:feature:horn`（主界面 UI、ViewModel、声学工坊 BottomSheet、护耳/静音安全引导组件）
+    - `:benchmark`（Baseline Profile 与 DSP 性能基准测试模块）
+- **[4.2] 代码质量与架构防腐门禁**：
+  - 集成 **Spotless (ktlint)** 与 **Detekt**（配置 `config/detekt/detekt.yml`，确保零 Error 并支持 `./gradlew spotlessApply` 自动格式化）。
+  - 集成 **Konsist** 编写架构守护单元测试（`ArchitectureTest`），用代码强制断言：
+    - `:feature:horn` 与 `:core:designsystem` 严禁直接导入 `android.media.*`；
+    - `:core:audio` 严禁依赖 Jetpack Compose；
+    - 所有 `ViewModel` 必须位于指定包下且正确命名；
+    - 核心渲染路径禁止滥用全局可变状态。
+- **Phase 1 门禁**：迁移原有 v2.0 全部功能与测试到新模块，执行 `./gradlew testDebugUnitTest detekt spotlessCheck` 全部通过后进入 Phase 2。
+
+---
+
+## Phase 2：[2.1] C++ Oboe 引擎与零 GC 审计 + [1.3 声场/调制底层] + [2.2 自定义工坊底层]
+全面升级 `:core:audio` 与 `:core:data`：
+
+- **[2.1] 零 GC 审计 & C++ Oboe (AAudio) Native 音频引擎**：
+  - 通过 Gradle **Prefab** 集成 Google **Oboe** (`com.google.oboe:oboe`) 并配置 CMake (`src/main/cpp/CMakeLists.txt`)，实现 `OboeHornAudioEngine`（基于 `oboe::AudioStreamDataCallback`，`SharingMode::Exclusive` 优先，`PerformanceMode::LowLatency`，Float32 渲染，锁无关原子参数传递 `std::atomic`，在 C++ 层完整复刻 4 种车型 + 自定义音色 + 空间混响 + 软限幅器）。
+  - 同步对 Kotlin 兜底引擎 `AudioTrackHornAudioEngine` 进行**严格零 GC 分配审计**（音频渲染循环内严禁 `new` 对象、严禁装箱、严禁 Lambda 捕获分配，全部复用预分配 `FloatArray`/`ShortArray`），并在运行时支持优先启用 Oboe（不支持或测试环境无缝降级至零 GC Kotlin 引擎），同时保留完整 JNI `@Keep` 与 R8 混淆规则。
+- **[1.3 底层] 空间声场混响 & 实时气压/音高调制**：
+  - 实现预分配环形缓冲区的零分配 **Schroeder/Freeverb 轻量级算法混响**，支持 3 种声学环境：`STREET`（常规街道，干声为主）、`TUNNEL`（隧道回响，长衰减+低通阻尼反射，火车鸣笛极具震撼力）、`OPEN_ROAD`（旷野远传，柔和远场预延迟与高频自然衰减）。
+  - 支持实时连续表达参数 `expression: Float`（`-1.0f ~ +1.0f`，默认 `0f`）：动态调制音高微弯（±8% Pitch Bend）与气阀通气量/谐波亮度。
+- **[2.2 底层] 第 5 种自定义声学预设（Pro Sound Lab）**：
+  - 新增 `HornType.CUSTOM` 及 `CustomHornProfile` 数据模型（可调参数：主基频 `150Hz~3000Hz`、副基频比/双音开关、谐波丰富度 `0~1`、起音 Attack `3ms~120ms`、尾音 Release `5ms~250ms`、饱和失真度 `0~1`），通过 `:core:data` DataStore 持久化保存并支持一键恢复默认。
+- **实时音频遥测接口（供 1.2 与 4.1 复用）**：
+  - 在音频引擎中构建无锁/低开销的实时遥测通道，输出：实时 RMS 响度包络（`0f..1f`）、最新时域波形快照（如 256 samples 环形缓冲区）、实测输出延迟（ms）、缓冲区欠载计数（xrun/underrun count）、单帧渲染耗时（μs）及当前激活引擎标识（`Oboe C++` / `AudioTrack JVM`）。
+- **Phase 2 门禁**：编写全面的 DSP 单元测试（验证 5 种音色、3 种混响模式、防削波 `[-1.0f, 1.0f]`、无 NaN/Inf、响度均衡、表达调制平滑性），执行 `./gradlew :core:audio:testDebugUnitTest :core:audio:assembleDebug` 通过后进入 Phase 3。
+
+---
+
+## Phase 3：[1.1] 护耳防呆 + [1.2] 音画同步与 AGSL + [1.3] 物理交互 + [2.2 UI] + [3.2] 自适应大屏
+全面升级 `:core:designsystem`、`:feature:horn` 与 `:app`：
+
+- **[1.1] 防呆与护耳安全机制**：
+  - **零音量智能引导**：监听系统 `STREAM_MUSIC` 音量变化；当用户按压鸣笛但媒体音量为 `0` 时，在主按钮上方弹出高质感内联胶囊提示（“媒体音量为 0 · 一键设为 60%”），点击直接调节音量并平滑隐藏。
+  - **耳机检测与护耳限幅**：通过 `AudioManager`（`AudioDeviceCallback`）实时监听有线/蓝牙耳机连接状态。当佩戴耳机且系统音量 > 70% 时，自动向音频引擎下发 `-6dB` 护耳软限幅保护，并在顶部显示低调精致的“护耳保护已开启”微徽章。
+- **[1.2] 音频驱动实时视觉 & AGSL 着色器**：
+  - 将主按钮周围的声波扩散与发光晕圈改为由音频引擎实时吐出的 **RMS 包络流** 真实驱动（火车缓起长尾与电车锐利通断在视觉上精准同步）。
+  - 在 Android 13+（`Build.VERSION_CODES.TIRAMISU`）使用 **AGSL `RuntimeShader`** 实现拟真金属微光/空气声压涟漪效果；API 26–32 自动优雅降级为高质量 Compose `Canvas` 渲染。
+- **[1.3 交互] 进阶物理交互**：
+  - **按住垂直滑动调制**：在单按钮 `pointerInput` 中，按住后手指上下滑动实时改变 `expression`（气压/音高微弯），伴随克制的视觉刻度微提示，松手自动归零止音；手指横向拖出按钮有效区则安全取消止音。
+  - **空间声场快速切换**：在主界面提供极简的声场切换胶囊（街道 / 隧道 / 旷野），支持 DataStore 持久化。
+  - **物理音量键扳机模式（可选开关）**：在设置/工具条中提供开关；开启后，在 Activity 中通过 `dispatchKeyEvent` 拦截 `KEYCODE_VOLUME_UP/DOWN`（严格处理 `ACTION_DOWN` `repeatCount == 0` 起音与 `ACTION_UP` 止音），实现盲操鸣笛；关闭时完全恢复正常音量键行为。
+- **[2.2 UI] 自定义声学工坊（Pro Sound Lab）**：
+  - 点击第 5 档“自定义”芯片或专属调音图标，弹出 Material 3 `ModalBottomSheet` 声学工坊：提供直观滑块（主频、双音比例、谐波、起音、尾音、失真度）+ **底栏实时试听按压按钮** + 保存/重置按钮，改动实时生效。
+- **[3.2] 自适应大屏、折叠屏与车载横屏布局**：
+  - 使用 Material 3 `WindowSizeClass` 适配不同窗口形态：
+    - 竖屏紧凑模式（Compact）：经典上下居中单手操控布局。
+    - 横屏/平板/折叠屏展开态（Medium / Expanded）：左右分栏人体工学仪表盘布局——左侧为车型档位、声场切换、状态指示与调音入口，右侧为超大方向盘主按钮，确保横屏与折叠屏悬停态下零遮挡、零挤压。
+- **Phase 3 门禁**：执行 `./gradlew :feature:horn:testDebugUnitTest :app:assembleDebug` 通过后进入 Phase 4。
+
+---
+
+## Phase 4：[3.1] Glance 微件 & 快捷磁贴 + [3.3] Wear OS 手表端扩展
+
+- **[3.1] 桌面微件（Jetpack Glance）与快捷设置磁贴（Quick Settings Tile）**：
+  - 使用 **Jetpack Glance (`androidx.glance:glance-appwidget`)** 实现支持 1×1 与 2×2 尺寸自适应的极简喇叭微件：显示当前车型图标，点击后通过轻量前台/短时音频 Action 触发一次清脆“礼貌双鸣（Bi-Bi）”或直达主界面（注意 Android 12+ 后台音频与广播限制的合规实现，严禁 Crash）。
+  - 实现系统下拉栏 **Quick Settings Tile (`TileService`)**：展示当前选中车型，点击快捷触发短鸣或唤起 App 鸣笛面板。
+- **[3.3] Wear OS 手表端（`:wear` 模块）**：
+  - 基于 **Wear OS Compose (`androidx.wear.compose`)** 构建极简圆屏手表应用：中央超大弧形/圆形按压按钮 + 上下边缘快速切车型，适配表冠与圆形屏幕防裁切（`ScalingLazyColumn` / `TimeText`）。
+  - 基于 Google **Wearable Data Layer (`MessageClient` + `:app` 端 `WearableListenerService`)** 实现远程联动：在手表端按住/松手向手机端发送低延迟指令（`/horn/start`、`/horn/stop`、`/horn/type`），手机端收到后直接驱动本地音频引擎发声并回传状态；同时将通信层抽象为接口，确保手表端与手机端的联动逻辑均可脱离 Play Services 进行离线单元测试。
+- **Phase 4 门禁**：执行 `./gradlew :wear:testDebugUnitTest :wear:assembleDebug :app:assembleDebug` 全部通过后进入 Phase 5。
+
+---
+
+## Phase 5：[4.1] Debug 专属 DSP 实时示波器浮层 + [4.4] 截图视觉回归测试 & 性能基准
+
+- **[4.1] Debug 专属 DSP 示波器与调参浮层（严格隔离 Release）**：
+  - 利用多源码集 `src/debug` 与 `src/release` 实现编译期隔离：
+    - `src/debug`：提供一个可展开/折叠的极客悬浮调试抽屉 **DSP Dev Overlay**，展示：当前音频引擎（`Oboe C++` / `AudioTrack`）、实时延迟（ms）、缓冲区欠载（xrun）计数、单帧渲染耗时（μs）、**实时 Canvas 时域示波器（Waveform Oscilloscope）+ 峰值电平表（VU Meter）**（真实消费 Phase 2 的无锁环形缓冲区数据）、快速滑块微调 + **“一键复制为 Kotlin 常量代码”**按钮（写入剪贴板并 Toast 提示）。
+    - `src/release`：注入完全空的 `NoOpDebugOverlay`，确保 Release 包零调试代码、零体积膨胀。
+- **[4.4] UI 视觉回归测试 + Baseline Profiles & 性能基准**：
+  - **视觉回归测试（Roborazzi）**：在 `:feature:horn` 配置 **Roborazzi + Robolectric**（JVM 无头运行，无需模拟器），覆盖关键状态矩阵截图测试：**汽车/火车/电车/摩托车/自定义 × 深色/浅色主题 × 中文/英文 × 2.0x 无障碍大字体 × 横屏大屏布局**。先在本地执行 `./gradlew recordRoborazziDebug` 生成并提交基准图，再运行 `./gradlew verifyRoborazziDebug` 验证 100% 稳定一致。
+  - **Baseline Profiles & DSP 性能基准（`:benchmark`）**：
+    - 在 `:app` 集成 `androidx.profileinstaller`，在 `:benchmark` 编写 `BaselineProfileGenerator`（覆盖冷启动、切换车型与鸣笛渲染关键路径），并内置合规的初始 `src/main/baseline-prof.txt`（若本机检测到已连接的 API 31+ 模拟器则直接实测生成）。
+    - 在 `:core:audio` 编写严格的性能断言测试（模拟连续渲染 10 秒 48kHz 音频缓冲，断言单帧 128-sample 渲染耗时远低于 2.66ms 实时预算，且测试通过）。
+- **Phase 5 门禁**：执行 `./gradlew verifyRoborazziDebug :benchmark:assembleBenchmark` 验证通过后进入 Phase 6。
+
+---
+
+## Phase 6：[4.5] GitHub Actions CI 流水线 + 本机全量最终验收
+
+- **[4.5] GitHub Actions CI/CD 基础流水线**：
+  - 创建规范的 `.github/workflows/ci.yml`（触发条件：`push` / `pull_request` 至 `main`/`develop`），配置 Gradle 缓存与并发取消，包含以下完整检查 Job：
+    1. **Code Quality Gate**：`spotlessCheck` + `detekt` + `lintDebug`
+    2. **Unit & Architecture Tests**：全模块 `testDebugUnitTest`（包含 Konsist 架构守护测试、DSP 性能与声学测试、`:wear` 测试）
+    3. **Visual Regression Tests**：`verifyRoborazziDebug`（失败时自动上传 diff 图片 Artifact）
+    4. **Release R8 Build & APK Size Report**：执行 `:app:assembleRelease` 与 `:wear:assembleRelease`（启用 R8 混淆与资源压缩验证），自动计算 APK 大小并将 Markdown 格式的构建与体积报告写入 `$GITHUB_STEP_SUMMARY`。
+- **本机全量终端验收（必须全部实际跑通，0 跳过）**：
+  请在本机依次执行并修复一切报错与 Lint Error，直到全部绿灯：
+  1. `./gradlew spotlessApply`（统一格式化）
+  2. `./gradlew spotlessCheck detekt`
+  3. `./gradlew testDebugUnitTest`（全模块单元测试 + Konsist 架构测试）
+  4. `./gradlew verifyRoborazziDebug`（全量视觉回归验证）
+  5. `./gradlew lintDebug`（确保 0 Error）
+  6. `./gradlew :app:assembleDebug :app:assembleRelease :wear:assembleDebug :wear:assembleRelease :benchmark:assembleBenchmark`
+  7. 若本机有已连接的设备/模拟器，自动安装 `:app` Debug 包并验证启动无崩溃。
+
+---
+
+# 最终交付报告要求
+全部验证绿灯后，请输出一份结构化交付报告，包含：
+1. **13 项需求（1.1 ~ 4.5）逐项完成状态 Checklist** 与核心文件路径映射；
+2. **多模块拓扑图** 与 C++ Oboe vs Kotlin 引擎状态说明；
+3. **本机全量命令实测结果汇总**（包含 Debug / Release APK 产物路径与体积对比）；
+4. **在 Android Studio 中开发与调试指南**（如何呼出 Debug 示波器、如何联调 Wear OS 模拟器、如何在修改 UI 后更新 Roborazzi 基准图）。
+
+现在，请从 **Phase 0 环境探测** 开始，自主、严谨地推进全部阶段，禁止在完成前询问用户！
+
+按照工业级标准将所有autohorn改为horn，然后推送到这个仓库：https://github.com/424635328/Horn ，readme：# 角色设定
+你是一名极具冷幽默感的前大厂 Principal Android 工程师兼顶级开源项目维护者（Developer Advocate）。你擅长用**“一本正经地胡说八道”的幽默口吻**包装严肃硬核的工业级架构文档——让读者前半段笑出声，后半段看完架构图直呼“卧槽，这代码写得也太规范了”。
+
+# 任务目标
+请基于当前本地工作区已经完成的 `AutoHorn` v3.0 真实工程代码，撰写一套**达到 GitHub 高 Star 开源标杆水准**的双语文档：
+- `README.md`（简体中文主文档）
+- `README_EN.md`（地道英文版，适配全球开发者/Reddit/Hacker News 审美，非生硬机翻）
+并在文档顶部提供优雅的双语一键切换导航（`简体中文 | English`）。
+
+---
+
+# 一、动手前的真实性审计（严禁编造任何信息）
+在撰写正文前，你必须先实际读取本地工程文件，确保 README 中的每一个模块名、版本号、声学参数、文件路径和 Gradle 命令都与当前代码库 **100% 真实一致**：
+1. 读取 `settings.gradle.kts`、`gradle/libs.versions.toml`、`.github/workflows/ci.yml` 及 `build-logic/`，确认真实的模块列表、AGP/Kotlin/Oboe/SDK 版本与 CI 任务名。
+2. 读取 `:core:audio` 中的音色频率参数、混响模式与 C++ Oboe 实现细节。
+3. 扫描项目中已生成的 **Roborazzi 视觉回归截图**，挑选最具代表性的 3~5 张真实界面图（如浅色/深色、不同车型或横屏大屏视图），规范整理复制到 `docs/assets/` 目录下，用于 README 中真实的图文展示（**严禁留 `[此处插入截图]` 占位符！**）。
+
+---
+
+# 二、文案基调与内容架构规范
+
+## 风格红线（Humor Calibration）
+- **核心人设**：表面上是一个“帮你过马路反击路怒症的赛博防身武器”，背地里是一套“严重过度设计（Gloriously Over-Engineered）的现代 Android 实时音频与工程化样板”。
+- **幽默准则**：高级冷幽默、工程师自嘲、精准吐槽，**绝不油腻、不堆砌过时烂梗、不影响技术段落的专业性与严谨度**。
+
+## 必须包含的核心章节（按逻辑顺滑排布）
+
+### 1. Hero 头部区（第一眼抓住眼球）
+- 居中排版：项目标题 + 一句极具记忆点的副标题（例如用反差感概括：“一款为了在过马路时优雅反击，而动用了 C++ AAudio 低延迟引擎的工业级赛博喇叭”）。
+- 精致的 Shields.io 徽章矩阵（基于本机真实配置生成）：CI Workflow 状态、Kotlin、Android minSdk/targetSdk、C++ Oboe、Wear OS、Jetpack Compose、License。
+- 双语切换锚点。
+
+### 2. 灵魂开场白（为什么要做这个 App？）
+- **核心切入点（必须融入并升华）**：
+  > “如果你在过马路时被其他车辆刺耳的喇叭声惊扰了，手里却手无寸铁、毫无反击之力——那么你肯定会对这款 App 感兴趣。”
+- 顺势用冷幽默展开场景共鸣：
+  - 面对不耐烦催促的小轿车？用经典双音蜗牛喇叭礼貌回敬；
+  - 面对突然贴身狂按的电瓶车？当场切换**隧道回响模式**，拉响 311Hz+370Hz+494Hz 美式重载火车三音气喇叭，完成声学维度的降维打击；
+  - 甚至懒得掏手机？抬起 Wear OS 手表或者盲按口袋里的物理音量键，深藏功与名。
+- 顺滑转折到硬核反转：*“本来只想写个 `Button` 放个 MP3，结果工程师强迫症发作，一不小心把它写成了带 C++ 音频内核、AGSL 着色器和全自动视觉回归 CI 的工业级项目……”*
+
+### 3. “战术反击装备库”与硬核功能一览
+- 用高可读性的表格 + 简短俏皮点评，清晰呈现全部能力（覆盖 1.1~3.3）：
+  - **5 大声学武器**：汽车 / 火车 / 电车 / 摩托车 / 自定义声学工坊（Pro Sound Lab），标注真实声学特点（如气压延迟、气流噪声、振膜抖动、实时自定义调音）。
+  - **进阶物理手感**：按住上下滑动微调气压/音高（Expression）、3 大声场混响（街道/隧道/旷野）、差异化震动马达指纹、物理音量键盲操扳机。
+  - **反差级人文关怀**：媒体音量为 0 时的防尴尬智能提醒、戴耳机自动触发 `-6dB` 护耳软限幅（“反击别人可以，但不能先震聋自己”）。
+  - **全平台生态**：Android 13+ AGSL 金属光效、横屏/折叠屏仪表盘布局、Jetpack Glance 桌面微件、系统快捷磁贴、**Wear OS 手表远程引爆**。
+
+### 4. 真实界面预览（Visual Showcase）
+- 将 `docs/assets/` 中挑选好的真实 Roborazzi UI 截图，用美观的 Markdown 表格并排展示（标注清晰图注，如不同车型/深浅主题/大屏形态）。
+
+### 5. “杀鸡用牛刀”的技术架构揭秘（工业级工程亮点）
+这里恢复绝对专业、令资深 Android 开发者眼前一亮的技术表达，包含 **2 张规范的 Mermaid 图表**：
+1. **多模块架构拓扑图（Mermaid `graph TD`）**：精确反映 `:app`、`:wear`、`:feature:horn`、`:core:audio`、`:core:haptic`、`:core:data`、`:core:designsystem`、`:benchmark` 与 `build-logic` 的依赖边界。
+2. **零 GC 实时音频与遥测数据流图（Mermaid `flowchart LR`）**：展示从多端触发（屏幕手势 / 音量键 / Wear OS MessageClient）→ 无锁原子状态 → C++ Oboe (AAudio) / 零分配 AudioTrack → DSP 合成 + 混响 + 软限幅 → 扬声器 + 无锁环形缓冲区遥测 → 驱动 RMS 声波 / Debug 实时示波器。
+- 突出展现 **DX 与工程质量门禁（4.1~4.5）**：
+  - `src/debug` 专属 **DSP 实时示波器 & 一键导出 Kotlin 调音代码**（Release 包编译期零侵入剔除）。
+  - **Spotless + Detekt + Konsist** 代码与架构防腐门禁。
+  - **Roborazzi** 无头像素级视觉回归测试 + **Baseline Profiles** 性能优化 + **GitHub Actions** 全自动 CI 与 APK 体积追踪。
+
+### 6. 快速上手与开发者指南（Developer Experience）
+- **环境要求**：精确列出本机验证过的 JDK、Android Studio、NDK/CMake 版本要求。
+- **高频工程命令速查表**（每条命令必须与本机真实 Gradle Task 核对无误）：
+  - 构建 Debug / Release APK（手机端 + Wear OS 端）
+  - 一键格式化与代码门禁（`spotlessApply` / `spotlessCheck` / `detekt` / `lintDebug`）
+  - 运行全量单元测试与 Konsist 架构测试
+  - 录制与验证 Roborazzi 截图基准
+- **彩蛋调试指引**：简要说明如何在 Debug 包中呼出“DSP 实时示波器浮层”以及如何联调 Wear OS 模拟器。
+
+### 7. 严肃且幽默的安全免责声明（Safety Disclaimer）
+- 既保留全文风趣基调，又清晰划定现实安全红线，例如提醒用户：
+  - *“本应用仅供娱乐、实时 DSP 声学实验与现代 Android 工程架构交流。过马路请严格遵守交通规则、礼让通行，切勿在真实车流中与钢铁巨兽正面对线——我们的 C++ Oboe 音频延迟可以做到 10ms 以内，但大卡车的物理刹车距离不行。”*
+  - 同时提醒勿在图书馆、深夜住宅区或靠近他人耳边恶意使用。
+
+### 8. 开源协议与致谢（License & Contributing）
+- 简洁规范的开源贡献指引与 License 说明。
+
+---
+
+# 三、质量自检与交付标准（必须执行）
+撰写完成后，请执行以下检查：
+1. 检查 `README.md` 与 `README_EN.md` 中所有图片相对路径（`docs/assets/...`）是否真实存在、无死链。
+2. 检查所有 Mermaid 语法是否合法（避免未转义的特殊括号/引号导致 GitHub 渲染报错）。
+3. 核对文档中提到的所有 `./gradlew ...` 命令确实在当前项目中有效（必要时抽测验证）。
+4. 若本地有修改，确保未破坏 `spotlessCheck` 或既有测试。
+
+完成后请输出简要汇总：列出已生成的文档路径、引用的真实截图清单，以及提醒用户推送到 GitHub 后需要替换的仓库名占位符（如有）。现在请先开始审计本地工程文件并执行撰写。
+
+# 角色设定
+你是一名拥有 12 年经验的 Staff Android 系统架构师与技术文档专家，熟悉 Google Design Doc、RFC 2119 规范、C4 架构建模以及 MADR（Markdown Any Decision Records）标准。
+
+# 任务目标
+请对当前本地工作区的 `AutoHorn` 工程进行全面代码审计，并在项目根目录下建立一套符合**大厂工业级标准的 `docs/spec/` 技术规约与架构决策文档体系**，精准沉淀本项目的全部关键实现决策、架构不变量（Invariants）、权衡取舍（Trade-offs）与技术契约。
+
+---
+
+# 工业级写作铁律（CRITICAL STANDARDS）
+
+1. **代码溯源铁律（Zero Hallucination）**：
+   - 动笔前必须先通读本机真实代码！文档中提及的每一个模块名、类名、文件路径、C++ 符号、声学频率/包络/限幅参数、Gradle 任务名、SDK/库版本、CI Job 名称，**必须 100% 源自本机现有代码**。
+   - 关键技术声明必须附上精确的仓库内相对路径引用（例如 `` `core/audio/src/main/cpp/...` ``），严禁编造不存在的类或理想化但未落地的功能。
+2. **严谨克制的工程文风**：
+   - 区别于 `README.md` 的幽默风格，`docs/spec/` 必须保持**绝对冷静、客观、无歧义的专业 RFC 技术文档风格**。
+   - 对核心系统约束规范使用 **RFC 2119 关键词**（`MUST`、`MUST NOT`、`SHOULD`、`MAY`，或中文对应规范词 `必须`、`严禁`、`应当`）。
+3. **诚实记录权衡与边界（Honest Engineering）**：
+   - 工业级文档必须明确写出 **Non-Goals（非目标）** 与 **Known Limitations / Trade-offs（已知局限与技术权衡）**（例如：Jetpack Glance 受 Android `RemoteViews` 平台限制无法实现真正长按持续发声，因此设计为短促双鸣；Wear OS 联动依赖配对手机及 Play Services 等）。
+4. **图表驱动表达**：
+   - 合理使用规范的 **Mermaid 图表**（模块依赖图、状态机图 `stateDiagram-v2`、时序图 `sequenceDiagram`、DSP 信号流图 `flowchart LR`）与结构化参数表格，避免大段难以检索的纯文字墙。
+
+---
+
+# Phase 1：全仓库深度审计（先读后写）
+
+请在写文档前先系统审计以下核心源码与配置区域（如有差异，以本机实际实现为准）：
+1. **构建与工程体系**：`settings.gradle.kts`、`gradle/libs.versions.toml`、`build-logic/`、`config/detekt/`、`.github/workflows/ci.yml`、各模块 `proguard-rules.pro`、Konsist 架构测试源码。
+2. **音频与 DSP 核心**：`:core:audio` 下的 Kotlin 与 C++（`CMakeLists.txt` / `.cpp` / `.h`）源码，核实引擎选择/降级策略、采样率/帧长/缓冲模型、5 种音色（汽车/火车/电车/摩托车/自定义）具体声学参数、混响算法、响度校准与软限幅参数、无锁遥测环形缓冲区设计。
+3. **交互、触觉、数据与 UI**：`:core:haptic`、`:core:data`（DataStore Key 与 Schema）、`:core:designsystem`（AGSL 着色器与降级策略、WindowSizeClass 断点）、`:feature:horn`（手势状态机、护耳与零音量防呆、音量键拦截、声学工坊）。
+4. **生态扩展与调试体系**：`:app`（Glance Widget、Quick Settings Tile、`WearableListenerService`、Baseline Profile 配置、`src/debug` vs `src/release` 隔离实现）、`:wear`（Wear OS UI 与消息通信协议）、`:benchmark` 与 Roborazzi 视觉回归测试矩阵。
+
+---
+
+# Phase 2：`docs/spec/` 目录结构与文档交付蓝图
+
+请按以下清晰的工业级结构生成文档（文档统一使用简体中文，专业术语保留英文标准表达）：
+
+## 1. 索引与治理总纲
+- **`docs/spec/README.md`**
+  - 规范文档总目录、文档生命周期状态说明（`Living Spec` / `Accepted ADR`）。
+  - **系统核心不变量总表（Top-Level System Invariants）**：提炼全项目最不能被破坏的 8~10 条铁律（音频线程零分配/无锁、生命周期防卡音、架构分层边界、Release 零调试泄露、护耳防削波等）。
+  - 核心术语表（Glossary：xrun、RMS、AGSL、MADR、Prefab、UDF 等）。
+
+## 2. 系统核心技术规约（System Specifications）
+- **`docs/spec/01-system-architecture.md`（系统架构与模块契约）**
+  - 多模块拓扑图（Mermaid）与各模块职责/暴露 API 边界（`public` vs `internal`）。
+  - 依赖注入方式、单向数据流（UDF）状态机设计（Mermaid `stateDiagram-v2`）。
+  - **防“卡音”安全生命周期矩阵**：完整列出退后台、来电、锁屏、音频焦点丢失、配置变更、手势取消/滑出、切换音色等场景下的止音状态转移契约。
+  - `:core:data` 持久化 Schema 契约（DataStore Keys、默认值、主线程零阻塞读取原则）。
+- **`docs/spec/02-audio-dsp-engine.md`（实时音频引擎与 DSP 声学规约）**
+  - 双后端音频引擎架构（C++ Oboe AAudio 主引擎 + 零 GC Kotlin `AudioTrack` 兜底引擎）的路由、生命周期与线程模型（含锁无关原子参数同步机制）。
+  - 完整 DSP 信号链（Mermaid `flowchart LR`）：多振子合成 → 气压/音高表达调制 → 空间混响（街道/隧道/旷野拓扑与滤波参数） → 感知响度校准增益 → 耳机护耳衰减（-6dB） → 软限幅/硬边界保护 → 输出与无锁遥测分流。
+  - **5 大音色精确声学参数表**（从源码如实提取基频、和弦、谐波、Attack/Release、调制、增益标定）。
+  - 实时性能预算（采样率、Buffer 预算、零 GC 审计规则、延迟与 xrun 监控协议）。
+- **`docs/spec/03-ux-interaction-and-haptics.md`（交互状态机、视觉降级与触觉规约）**
+  - 主按钮底层指针手势状态机（按压起音、垂直滑动 Expression 调制范围、横向移出取消、松手归零止音）。
+  - 防呆与护耳交互规范（零音量检测与恢复流、耳机插拔监听与自动限幅提示）。
+  - 物理音量键拦截契约（开关态与关闭态的 `KeyEvent` 消费边界，防止劫持系统音量）。
+  - 视觉与硬件能力分级兼容矩阵（API 33+ AGSL `RuntimeShader` vs API 26–32 Canvas 降级；WindowSizeClass 竖屏/横屏/折叠屏布局断点；`VibratorManager` / 振幅控制兼容降级与各车型触觉指纹参数）。
+- **`docs/spec/04-ecosystem-and-protocols.md`（生态扩展与跨端通信协议）**
+  - Jetpack Glance 桌面微件与 `TileService` 快捷磁贴的交互模型及 Android 12+ 后台音频合规限制说明。
+  - **手机端（`:app`）↔ 手表端（`:wear`）通信协议规约**：共享 `applicationId` 硬性约束、Wearable Data Layer `MessageClient` 路径与 Payload 格式表、时序图（Mermaid `sequenceDiagram`）、断连/超时容错与离线可测试传输层抽象。
+- **`docs/spec/05-dx-quality-and-ci.md`（工程效能、测试金字塔与 CI/CD 规约）**
+  - `src/debug` 与 `src/release` 编译期零侵入隔离机制（Debug 实时示波器如何保证不进入 Release 产物）。
+  - 质量门禁矩阵：Spotless、Detekt、Android Lint、Konsist 架构守护规则清单、DSP 声学与性能断言、Roborazzi 截图测试矩阵与基准更新 SOP、Baseline Profiles 生成流程。
+  - Release R8 混淆与 JNI/Glance/Wearable 保活规则说明。
+  - GitHub Actions CI 流水线各 Job 职责与 APK 体积监控机制。
+
+## 3. 架构决策记录（`docs/spec/adr/`，严格遵循 MADR 格式）
+请为本项目最关键的技术选型逐一编写规范的 ADR（每篇均须包含：`状态`、`日期`、`背景与问题`、`决策驱动因素`、`备选方案对比表`、`最终决策`、`正负面影响与权衡`、`源码验证路径`）：
+- `ADR-0001-procedural-dsp-over-sampled-assets.md`（为何采用实时程序化 DSP 合成而非内置 WAV/MP3 采样文件）
+- `ADR-0002-dual-audio-backend-oboe-and-audiotrack.md`（为何采用 C++ Oboe Prefab 主引擎 + 零 GC Kotlin AudioTrack 兜底双引擎架构）
+- `ADR-0003-multi-module-build-logic-and-konsist.md`（为何采用多模块化、`build-logic` 约定插件及 Konsist 自动化架构防腐）
+- `ADR-0004-equal-loudness-calibration-and-ear-protection.md`（为何引入多音色感知响度校准、软限幅器及耳机自动 -6dB 护耳策略）
+- `ADR-0005-compile-time-debug-release-isolation.md`（为何采用多源码集 `src/debug` vs `src/release` 编译期隔离 Debug 示波器，而非运行时 `BuildConfig.DEBUG` 分支）
+- `ADR-0006-roborazzi-headless-visual-regression.md`（为何选用 Roborazzi + Robolectric JVM 无头截图回归，而非模拟器截图方案）
+- `ADR-0007-wear-os-message-client-protocol.md`（为何在 Wear OS 远程鸣笛中选用低延迟 `MessageClient` 而非 `DataClient` 同步，及共享包名约束）
+- *(如在代码审计中发现其他关键实际决策——例如手动 DI vs Hilt、特定混响算法选型、或本机 NDK/CMake 构建兼容决策——请按相同标准顺延补充 `ADR-0008-...` 等真实决策记录。)*
+
+---
+
+# Phase 3：文档集成与自动化一致性自检（必须执行）
+
+完成全部文档撰写后，请务必执行以下核验：
+1. **入口联动**：在根目录 `README.md` 与 `README_EN.md` 的架构/开发者章节中，增加指向 `docs/spec/README.md` 的简洁链接（不要破坏原有 README 的幽默风格）。
+2. **源码路径与死链核查**：逐一验证 `docs/spec/` 内所有 Markdown 内部相对链接以及引用的仓库源码文件路径在本地磁盘中**100% 真实存在**，零死链、零幽灵类名。
+3. **Mermaid 语法校验**：检查所有 Mermaid 代码块语法严谨（节点含特殊字符/括号时规范加双引号，确保 GitHub 原生零报错渲染）。
+4. **工程门禁复检**：运行 `./gradlew spotlessCheck`（确保新增文档未触发格式门禁失败）。
+
+完成后输出一份精简的交付清单：列出 `docs/spec/` 下新建的全部文件树、提取的关键不变量摘要，以及已核验的代码锚点统计。现在请开始 Phase 1 全仓库审计并执行撰写。

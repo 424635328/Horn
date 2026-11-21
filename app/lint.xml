@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<lint>
+    <!--
+      Versions are deliberately pinned in gradle/libs.versions.toml and validated as one
+      compatible set (AGP 8.13.2 + Gradle 8.13 + Kotlin 2.2.21 + Compose BOM 2025.06.01).
+      "A newer version exists" is dependency-upgrade churn, not a defect in this build; upgrades
+      are handled as a tested version-catalog change rather than silently in every lint run.
+    -->
+    <issue id="NewerVersionAvailable" severity="ignore" />
+    <issue id="AndroidGradlePluginVersion" severity="ignore" />
+    <!-- Konsist 0.18.x embeds Kotlin 2.4 metadata and cannot compile with Kotlin 2.2.21. -->
+    <issue id="GradleDependency" severity="ignore" />
+</lint>
