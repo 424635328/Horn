@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">AutoHorn</string>
+    <string name="widget_channel_name">Horn widget playback</string>
+    <string name="widget_playing">Playing a short horn burst</string>
+    <string name="tile_label">Horn</string>
+    <string name="tile_label_active">Honking</string>
+    <string name="tile_subtitle">Tap for a short honk</string>
+</resources>

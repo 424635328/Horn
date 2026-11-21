@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">多音喇叭</string>
+    <string name="widget_channel_name">桌面喇叭播放</string>
+    <string name="widget_playing">正在播放短促鸣笛</string>
+    <string name="tile_label">喇叭</string>
+    <string name="tile_label_active">鸣笛中</string>
+    <string name="tile_subtitle">点按播放短促鸣笛</string>
+</resources>
