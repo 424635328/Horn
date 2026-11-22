@@ -1,0 +1,11 @@
+# Module-level review ownership. Default owner for everything not listed below.
+* @424635328
+
+# Audio DSP core and native engine: highest-risk area.
+/core/audio/ @424635328
+
+# Architecture specs and decision records require maintainer review.
+/docs/spec/ @424635328
+
+# CI and release automation.
+/.github/ @424635328

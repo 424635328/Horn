@@ -1,0 +1,75 @@
+name: Bug Report
+description: Report a crash, functional defect or unexpected behavior.
+title: "fix: "
+labels: ["bug"]
+body:
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Affected surface
+      description: Which part of the project is affected?
+      options:
+        - Phone App
+        - Wear OS
+        - Glance Widget / Quick Tile
+        - Build & CI
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Device model
+      placeholder: "e.g. Pixel 8, Galaxy Watch 6"
+    validations:
+      required: true
+  - type: dropdown
+    id: api-level
+    attributes:
+      label: Android API level
+      options:
+        - "API 26-29 (Android 8-10)"
+        - "API 30-32 (Android 11-12L)"
+        - "API 33-34 (Android 13-14)"
+        - "API 35 (Android 15)"
+        - "API 36 (Android 16)"
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps
+      description: Minimal steps to reproduce the problem.
+      placeholder: |
+        1. Open the app ...
+        2. Press and hold ...
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Crash stack / screenshots
+      description: Paste logcat output or drag screenshots here (optional but very helpful).
+      render: shell
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Preflight
+      options:
+        - label: I searched existing issues and did not find a duplicate.
+          required: true
+        - label: I reproduced the problem on the latest `main` build.
+          required: true

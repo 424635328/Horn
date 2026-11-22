@@ -1,0 +1,53 @@
+version: 2
+updates:
+  - package-ecosystem: gradle
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      kotlin:
+        patterns:
+          - "org.jetbrains.kotlin*"
+          - "org.jetbrains.kotlinx*"
+      compose:
+        patterns:
+          - "androidx.compose*"
+          - "androidx.activity*"
+          - "androidx.glance*"
+      android:
+        patterns:
+          - "androidx.core*"
+          - "androidx.lifecycle*"
+          - "androidx.datastore*"
+          - "androidx.profileinstaller*"
+      testing:
+        patterns:
+          - "org.robolectric*"
+          - "io.github.takahirom.roborazzi*"
+          - "junit*"
+          - "androidx.test*"
+          - "com.lemonappdev*"
+      audio-native:
+        patterns:
+          - "com.google.oboe*"
+          - "com.google.android.gms*"
+
+  - package-ecosystem: gradle
+    directory: "/build-logic"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      actions:
+        patterns:
+          - "*"

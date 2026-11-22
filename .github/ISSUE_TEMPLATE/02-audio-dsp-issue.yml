@@ -1,0 +1,85 @@
+name: Audio / DSP Issue
+description: Report pops, xruns, clipping, loudness imbalance, stuck audio or ear-protection anomalies.
+title: "audio: "
+labels: ["area:audio-dsp", "bug"]
+body:
+  - type: dropdown
+    id: symptom
+    attributes:
+      label: Symptom
+      options:
+        - Pops / clicks
+        - Audio dropout (xrun)
+        - Clipping / distortion
+        - Loudness imbalance between voices
+        - Stuck audio after backgrounding
+        - Ear-protection (-6dB) limiter anomaly
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: output-chain
+    attributes:
+      label: Audio output chain
+      options:
+        - Built-in speaker
+        - Wired headset
+        - Bluetooth headset
+    validations:
+      required: true
+  - type: dropdown
+    id: voice
+    attributes:
+      label: Horn voice
+      options:
+        - Car
+        - Train
+        - E-Bike
+        - Motorcycle
+        - Custom (Pro Sound Lab)
+        - Multiple / N/A
+    validations:
+      required: true
+  - type: dropdown
+    id: space
+    attributes:
+      label: Acoustic space mode
+      options:
+        - Street
+        - Tunnel
+        - Open Road
+        - N/A
+    validations:
+      required: true
+  - type: dropdown
+    id: engine
+    attributes:
+      label: Active engine (from Debug DSP overlay)
+      options:
+        - "Oboe C++"
+        - "AudioTrack JVM"
+        - Unknown / cannot open overlay
+    validations:
+      required: true
+  - type: input
+    id: telemetry
+    attributes:
+      label: Debug overlay telemetry
+      description: Latency (ms) and xrun count shown in the DSP Dev Overlay, if available.
+      placeholder: "e.g. latency 12.4 ms, xrun 3"
+  - type: textarea
+    id: details
+    attributes:
+      label: Detailed description
+      description: What happens, when it happens, and how often.
+    validations:
+      required: true
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Preflight
+      options:
+        - label: I tested with the latest `main` build and a cold app start.
+          required: true
+        - label: I checked that media volume is not zero and no other app is holding audio focus.
+          required: true

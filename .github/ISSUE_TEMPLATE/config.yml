@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Architecture Spec & Invariants
+    url: https://github.com/424635328/Horn/blob/main/docs/spec/README.md
+    about: Read the system invariants and technical specifications before proposing changes.
+  - name: Security Vulnerability
+    url: https://github.com/424635328/Horn/blob/main/SECURITY.md
+    about: Please report security vulnerabilities privately per the security policy.

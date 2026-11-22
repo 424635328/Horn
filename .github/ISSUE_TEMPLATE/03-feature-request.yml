@@ -1,0 +1,39 @@
+name: Feature Request
+description: Propose a new capability, horn voice, or quality-of-life improvement.
+title: "feat: "
+labels: ["enhancement"]
+body:
+  - type: dropdown
+    id: category
+    attributes:
+      label: Category
+      options:
+        - New horn voice / vehicle type
+        - Apple Glass UI & motion
+        - Acoustic DSP
+        - Wear OS & ecosystem
+        - DX / engineering productivity
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: scenario
+    attributes:
+      label: Use case and motivation
+      description: Why does this fit the project's deliberately minimal one-button philosophy?
+    validations:
+      required: true
+  - type: textarea
+    id: acoustic
+    attributes:
+      label: Acoustic characteristics (new voice proposals only)
+      description: Describe the sound character — fundamental frequencies, transient behavior, harmonics, real-world reference.
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Preflight
+      options:
+        - label: I searched existing issues and discussions for a similar proposal.
+          required: true
+        - label: This request keeps the core "press to honk, release to stop" interaction intact.
+          required: true

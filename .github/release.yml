@@ -1,0 +1,37 @@
+changelog:
+  exclude:
+    labels:
+      - dependencies
+      - ignore-for-release
+    authors:
+      - dependabot
+  categories:
+    - title: "\U0001F50A Audio Engine & Acoustics"
+      labels:
+        - "area:audio-dsp"
+        - audio
+    - title: "\u2728 Apple Glass UI & Motion"
+      labels:
+        - "area:ui-glass"
+        - ui
+    - title: "\u231A Wear OS & Ecosystem"
+      labels:
+        - "area:wear-os"
+        - "area:widget-tile"
+    - title: "\U0001F41B Fixes"
+      labels:
+        - bug
+        - fix
+    - title: "\U0001F6E0\uFE0F Engineering & DX"
+      labels:
+        - "area:dx-ci"
+        - "area:build-logic"
+        - ci
+        - build
+    - title: "\U0001F4DA Specs & Docs"
+      labels:
+        - "area:docs-spec"
+        - docs
+    - title: Other Changes
+      labels:
+        - "*"

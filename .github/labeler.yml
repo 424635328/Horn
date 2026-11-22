@@ -1,0 +1,46 @@
+# actions/labeler@v5 syntax: changed-files -> any-glob-to-any-file
+"area:audio-dsp":
+  - changed-files:
+      - any-glob-to-any-file:
+          - core/audio/**
+          - benchmark/**
+
+"area:ui-glass":
+  - changed-files:
+      - any-glob-to-any-file:
+          - core/designsystem/**
+          - feature/horn/**
+
+"area:wear-os":
+  - changed-files:
+      - any-glob-to-any-file:
+          - wear/**
+          - core/data/src/main/java/**/WearProtocol.kt
+
+"area:widget-tile":
+  - changed-files:
+      - any-glob-to-any-file:
+          - app/src/main/java/**/widget/**
+
+"area:dx-ci":
+  - changed-files:
+      - any-glob-to-any-file:
+          - .github/**
+          - build-logic/**
+          - config/**
+          - gradle/**
+          - "*.gradle.kts"
+          - gradle.properties
+
+"area:docs-spec":
+  - changed-files:
+      - any-glob-to-any-file:
+          - docs/**
+          - README*.md
+          - CONTRIBUTING.md
+          - SECURITY.md
+
+"area:build-logic":
+  - changed-files:
+      - any-glob-to-any-file:
+          - build-logic/**

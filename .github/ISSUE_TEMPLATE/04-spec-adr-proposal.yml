@@ -1,0 +1,46 @@
+name: Spec / ADR Proposal
+description: Propose a change to docs/spec invariants or open a new MADR architecture decision record.
+title: "docs(spec): "
+labels: ["area:docs-spec"]
+body:
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Proposal kind
+      options:
+        - Amend an existing system invariant
+        - Amend an existing specification document
+        - New ADR (architecture decision record)
+        - Clarification / editorial
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Background and problem statement
+      description: RFC-style context. Cite concrete code paths whenever possible.
+    validations:
+      required: true
+  - type: textarea
+    id: options
+    attributes:
+      label: Alternatives considered and trade-offs
+      description: List at least two options with their positive and negative consequences.
+    validations:
+      required: true
+  - type: textarea
+    id: compatibility
+    attributes:
+      label: Backward-compatibility assessment
+      description: Which invariants, APIs or user-visible behaviors does this affect?
+    validations:
+      required: true
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Preflight
+      options:
+        - label: I read docs/spec/README.md and the related ADRs.
+          required: true
+        - label: This proposal does not violate the zero-GC audio thread or anti-stuck-audio invariants without explicitly addressing them.
+          required: true
