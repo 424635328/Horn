@@ -1,4 +1,4 @@
-# AutoHorn 2.0 本机验证报告
+# Horn 2.0 本机验证报告
 
 验证日期：2026-11-21（Asia/Shanghai）
 工程路径：仓库根目录
@@ -16,8 +16,8 @@
 | Compose BOM | 2025.06.01 |
 | DataStore | 1.2.1 |
 | Android SDK | platform 36 / build-tools 36.0.0 |
-| 设备 | `AutoHorn_API_35` AVD（API 35，`aosp_atd` x86_64，WHPX） |
-| 应用 | `com.industrial.autohorn` v2.0.0 |
+| 设备 | `Horn_API_35` AVD（API 35，`aosp_atd` x86_64，WHPX） |
+| 应用 | `com.industrial.horn` v2.0.0 |
 
 ## 2. 命令与结果
 
@@ -64,7 +64,7 @@ E-Bike 的 RMS 刻意显著低于 Car/Moto：2.7 kHz 落在人耳高敏感区，
 
 1. 启动默认 Car；点击 Train；`uiautomator` 确认主按钮 contentDescription 变为 `Train horn. Press and hold to honk.`。
 2. `force-stop` 后重新启动；再次 dump，`restored_train=True`，说明 DataStore 恢复生效。
-3. DataStore 文件存在：`/data/data/com.industrial.autohorn/files/datastore/horn_preferences.preferences_pb`。
+3. DataStore 文件存在：`/data/data/com.industrial.horn/files/datastore/horn_preferences.preferences_pb`。
 4. 按住 Train：`AudioTrack state:started`、`sampleRate=48000`、`GAIN_TRANSIENT`、`PAUSES_ON_DUCKABLE_LOSS`。
 5. 按住期间按 HOME：焦点 `abandonAudioFocus`，AudioTrack `state:paused`，进程仍存活，`logcat -b crash` 为空。
 

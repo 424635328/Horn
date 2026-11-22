@@ -1,9 +1,9 @@
 plugins {
-    id("autohorn.android.library")
+    id("horn.android.library")
 }
 
 android {
-    namespace = "com.industrial.autohorn.audio"
+    namespace = "com.industrial.horn.audio"
     ndkVersion = "27.0.12077973"
 
     buildFeatures {

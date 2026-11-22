@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">多音喇叭</string>
-    <string name="brand_name">AUTOHORN</string>
+    <string name="brand_name">HORN</string>
     <string name="brand_tagline">五音色喇叭模拟系统</string>
     <string name="voice_selector_label">喇叭音色</string>
     <string name="horn_type_car">汽车</string>

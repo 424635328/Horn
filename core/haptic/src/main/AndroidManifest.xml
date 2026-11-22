@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- The haptic engine drives the platform Vibrator directly; declaring the permission here
+         keeps the module self-describing and lets manifest merger deduplicate it with the app. -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+</manifest>

@@ -2,4 +2,4 @@ plugins {
     `kotlin-dsl`
 }
 
-group = "com.industrial.autohorn.buildlogic"
+group = "com.industrial.horn.buildlogic"

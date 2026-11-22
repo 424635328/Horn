@@ -1,9 +1,9 @@
 plugins {
-    id("autohorn.android.library")
+    id("horn.android.library")
 }
 
 android {
-    namespace = "com.industrial.autohorn.haptic"
+    namespace = "com.industrial.horn.haptic"
 }
 
 dependencies {

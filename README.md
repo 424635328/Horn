@@ -1,8 +1,8 @@
-# AutoHorn 2.0
+# Horn 2.0
 
 工业级、零外部音频素材的**四音色喇叭模拟器**：汽车、火车、电动车、摩托车。核心交互仍是中央超大圆形按钮的“按住发声、松手即停”，并新增车型声学策略、差异化触觉、声波视觉与 DataStore 偏好持久化。
 
-- 包名：`com.industrial.autohorn`
+- 包名：`com.industrial.horn`
 - 版本：`2.0.0`（versionCode 2）
 - 技术栈：Kotlin 2.2.21 / Jetpack Compose（BOM 2025.06.01）/ Material 3 / DataStore Preferences 1.2.1
 - 构建：Gradle Kotlin DSL 8.13 + Version Catalog
@@ -11,7 +11,7 @@
 
 | 深色：Car | 浅色：Train |
 |---|---|
-| ![AutoHorn dark theme](docs/horn-screen.png) | ![AutoHorn light theme](docs/horn-screen-light.png) |
+| ![Horn dark theme](docs/horn-screen.png) | ![Horn light theme](docs/horn-screen-light.png) |
 
 ## 1. 四音色声学设计
 
@@ -39,7 +39,7 @@
 ## 3. 工程结构
 
 ```text
-app/src/main/java/com/industrial/autohorn/
+app/src/main/java/com/industrial/horn/
 ├── audio/
 │   ├── HornType.kt                 # Car / Train / E-Bike / Motorcycle
 │   ├── HornVoice.kt                # 参数表、策略工厂、Makeup Gain
@@ -71,7 +71,7 @@ app/src/main/java/com/industrial/autohorn/
 │   ├── HornVisuals.kt              # 每音色 Accent/Icon/WaveStyle
 │   └── theme/
 ├── di/AppContainer.kt              # DataStore + Session 组合根
-├── AutoHornApplication.kt
+├── HornApplication.kt
 └── MainActivity.kt
 ```
 
@@ -96,7 +96,7 @@ app/src/main/java/com/industrial/autohorn/
 ## 6. 构建与验证
 
 ```powershell
-cd <你的克隆目录>\AutoHorn
+cd <你的克隆目录>\Horn
 
 .\gradlew.bat :app:testDebugUnitTest
 .\gradlew.bat :app:lintDebug
@@ -126,7 +126,7 @@ cd <你的克隆目录>\AutoHorn
 
 ```powershell
 adb install -r app\build\outputs\apk\debug\app-debug.apk
-adb shell am start -n com.industrial.autohorn/.MainActivity
+adb shell am start -n com.industrial.horn/.MainActivity
 ```
 
 ## 7. 测试覆盖

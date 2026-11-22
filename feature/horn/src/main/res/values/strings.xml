@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">AutoHorn</string>
-    <string name="brand_name">AUTOHORN</string>
+    <string name="app_name">Horn</string>
+    <string name="brand_name">HORN</string>
     <string name="brand_tagline">FIVE-VOICE HORN SYSTEM</string>
     <string name="voice_selector_label">HORN VOICE</string>
     <string name="horn_type_car">Car</string>

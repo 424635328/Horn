@@ -1,14 +1,14 @@
 plugins {
-    id("autohorn.android.application")
-    id("autohorn.android.wear")
-    id("autohorn.android.compose")
+    id("horn.android.application")
+    id("horn.android.wear")
+    id("horn.android.compose")
 }
 
 android {
-    namespace = "com.industrial.autohorn.wear"
+    namespace = "com.industrial.horn.wear"
 
     defaultConfig {
-        applicationId = "com.industrial.autohorn"
+        applicationId = "com.industrial.horn"
         versionCode = 3
         versionName = "3.0.0"
     }

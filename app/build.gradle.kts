@@ -1,14 +1,14 @@
 plugins {
-    id("autohorn.android.application")
-    id("autohorn.android.compose")
+    id("horn.android.application")
+    id("horn.android.compose")
     alias(libs.plugins.roborazzi)
 }
 
 android {
-    namespace = "com.industrial.autohorn"
+    namespace = "com.industrial.horn"
 
     defaultConfig {
-        applicationId = "com.industrial.autohorn"
+        applicationId = "com.industrial.horn"
         versionCode = 3
         versionName = "3.0.0"
     }

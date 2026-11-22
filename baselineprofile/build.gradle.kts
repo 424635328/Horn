@@ -4,7 +4,7 @@ plugins {
 }
 
 android {
-    namespace = "com.industrial.autohorn.baselineprofile"
+    namespace = "com.industrial.horn.baselineprofile"
     compileSdk = 36
 
     defaultConfig {

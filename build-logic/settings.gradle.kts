@@ -19,5 +19,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "autohorn-build-logic"
+rootProject.name = "horn-build-logic"
 include(":convention")

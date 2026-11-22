@@ -2,7 +2,7 @@ plugins {
     `kotlin-dsl`
 }
 
-group = "com.industrial.autohorn.buildlogic"
+group = "com.industrial.horn.buildlogic"
 
 dependencies {
     implementation("com.android.tools.build:gradle:8.13.2")

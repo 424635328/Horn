@@ -1,10 +1,10 @@
 plugins {
-    id("autohorn.android.library")
-    id("autohorn.android.compose")
+    id("horn.android.library")
+    id("horn.android.compose")
 }
 
 android {
-    namespace = "com.industrial.autohorn.designsystem"
+    namespace = "com.industrial.horn.designsystem"
 }
 
 dependencies {

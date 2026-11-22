@@ -23,7 +23,7 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "AutoHorn"
+rootProject.name = "Horn"
 include(":app")
 include(":wear")
 include(":core:audio")

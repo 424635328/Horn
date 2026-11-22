@@ -7,9 +7,12 @@
 
     <application
         android:allowBackup="false"
-        android:label="AutoHorn"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
+        android:icon="@drawable/ic_launcher_wear"
+        android:label="Horn"
         android:supportsRtl="true"
-        android:theme="@style/Theme.AutoHornWear">
+        android:theme="@style/Theme.HornWear">
 
         <meta-data
             android:name="com.google.android.wearable.standalone"
@@ -17,7 +20,8 @@
 
         <activity
             android:name=".WearMainActivity"
-            android:exported="true">
+            android:exported="true"
+            android:taskAffinity="com.industrial.horn.wear">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
