@@ -125,9 +125,18 @@ internal class DefaultHornSession(
         engine.setCustomProfile(profile)
     }
 
+    override fun setOutputMode(mode: OutputMode) {
+        engine.setOutputMode(mode)
+    }
+
     override fun telemetrySnapshot(): AudioTelemetry = engine.telemetrySnapshot()
 
     override fun readWaveform(destination: FloatArray): Int = engine.readWaveform(destination)
+
+    override fun readWaveformStereo(
+        left: FloatArray,
+        right: FloatArray,
+    ): Int = engine.readWaveformStereo(left, right)
 
     override fun stop() {
         synchronized(stateLock) {

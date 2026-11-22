@@ -13,20 +13,24 @@ class DualToneHornSynthTest {
     @Test
     fun outputIsBoundedNonSilentAndNeverClips() {
         val synth = DualToneHornSynth(SAMPLE_RATE)
-        val samples = FloatArray(SAMPLE_RATE * 3)
-        synth.render(samples, samples.size)
+        val frames = SAMPLE_RATE * 3
+        val stereo = FloatArray(2 * frames)
+        synth.render(stereo, frames)
+        val samples = DspMeasurement.monoFold(stereo, frames)
 
         val peak = samples.maxOf { abs(it) }
         assertTrue("Synth must produce audible output", peak > 0.25f)
         assertTrue("Output must stay below full scale, was $peak", peak <= 0.95f)
-        assertTrue("No sample may reach PCM full scale", samples.none { abs(it) >= 1f })
+        assertTrue("No sample may reach PCM full scale", stereo.none { abs(it) >= 1f })
     }
 
     @Test
     fun spectrumContainsBothFundamentalsAndStrongHarmonics() {
         val synth = DualToneHornSynth(SAMPLE_RATE)
-        val samples = FloatArray(SAMPLE_RATE)
-        synth.render(samples, samples.size)
+        val frames = SAMPLE_RATE
+        val stereo = FloatArray(2 * frames)
+        synth.render(stereo, frames)
+        val samples = DspMeasurement.monoFold(stereo, frames)
 
         val lowFundamental = magnitude(samples, 400.0)
         val highFundamental = magnitude(samples, 500.0)
@@ -45,14 +49,30 @@ class DualToneHornSynthTest {
     }
 
     @Test
+    fun stereoIsImagedButKeepsTheMonoFoldIntact() {
+        val synth = DualToneHornSynth(SAMPLE_RATE)
+        val frames = SAMPLE_RATE
+        val stereo = FloatArray(2 * frames)
+        synth.render(stereo, frames)
+        val left = FloatArray(frames) { stereo[2 * it] }
+        val right = FloatArray(frames) { stereo[2 * it + 1] }
+
+        // The two horn bodies are cross-panned, so the channels must differ (not L=R copy) ...
+        assertTrue("Left and right are identical copies", left.zip(right).any { (l, r) -> l != r })
+        // ... while pure amplitude panning keeps them strongly correlated (02 §5 C1).
+        val correlation = AudioTelemetryBuffer.stereoCorrelation(left, right, frames)
+        assertTrue("Channels must stay correlated for mono folding: $correlation", correlation > 0.5f)
+    }
+
+    @Test
     fun synthesisIsDeterministicAndResetRestoresInitialState() {
         val synth = DualToneHornSynth(SAMPLE_RATE)
-        val first = FloatArray(4_800)
-        val second = FloatArray(4_800)
+        val first = FloatArray(9_600)
+        val second = FloatArray(9_600)
 
-        synth.render(first, first.size)
+        synth.render(first, first.size / 2)
         synth.reset()
-        synth.render(second, second.size)
+        synth.render(second, second.size / 2)
 
         assertArrayEquals(first, second, 0f)
     }
@@ -63,7 +83,7 @@ class DualToneHornSynthTest {
         val buffer = FloatArray(1_024) { 7f }
         synth.render(buffer, 256)
 
-        for (index in 256 until buffer.size) {
+        for (index in 512 until buffer.size) {
             assertTrue("Tail sample at $index was modified", buffer[index] == 7f)
         }
     }

@@ -4,9 +4,13 @@ package com.industrial.horn.audio.dsp
  * One-pole parameter smoother: `y[n] = y[n-1] + a * (x[n] - y[n-1])`.
  *
  * Every real-time control parameter (horn type crossfade, expression, acoustic space mix, ear
- * protection gain, custom-lab sliders) MUST pass through a smoother like this before it touches
- * gain or coefficient math, otherwise discontinuous parameter jumps produce audible zipper
- * noise. Instances are allocation-free after construction.
+ * protection gain, custom-lab sliders, output-mode crossfade) MUST pass through a smoother like
+ * this before it touches gain or coefficient math, otherwise discontinuous parameter jumps
+ * produce audible zipper noise. Instances are allocation-free after construction.
+ *
+ * Denormal defence (01 §2.1.3): the recursion runs on `y + dc` and subtracts `dc` again, so the
+ * state never parks in the exact-zero neighbourhood where JVM subnormals slow down; the DC bias
+ * is 1e-20, orders of magnitude below any audible or 16-bit-relevant level.
  */
 internal class OnePoleSmoother(
     sampleRate: Int,
@@ -31,7 +35,8 @@ internal class OnePoleSmoother(
 
     /** Advances one sample toward [target]; returns the smoothed value. */
     fun next(target: Float): Float {
-        state += coefficient * (target - state)
+        val dc = DspConstants.SMOOTHER_DC_BIAS.toFloat()
+        state = (1f - coefficient) * (state + dc) + coefficient * target - dc
         return state
     }
 

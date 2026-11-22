@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
@@ -45,9 +46,11 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -71,7 +74,9 @@ import com.industrial.horn.ui.theme.DynamicPillBanner
 import com.industrial.horn.ui.theme.HornTheme
 import com.industrial.horn.ui.theme.drawAmbientMesh
 import com.industrial.horn.ui.theme.rememberAmbientMeshSpec
+import com.industrial.horn.ui.theme.revealStagger
 import kotlin.math.min
+import com.industrial.horn.designsystem.R as DesignR
 
 /**
  * Main horn screen (v3.5 Apple Glass). The single-button interaction is untouched; the visuals
@@ -97,6 +102,8 @@ fun HornScreen(
     onCustomProfileSaved: () -> Unit = {},
     onCustomProfileReset: () -> Unit = {},
     readWaveform: (FloatArray) -> Int = { 0 },
+    readWaveformStereo: (FloatArray, FloatArray) -> Int = { _, _ -> 0 },
+    revealProgress: () -> Float = { 1f },
 ) {
     val isHonking = state.isHonking
     val selectedHorn = state.selectedHorn
@@ -221,7 +228,10 @@ fun HornScreen(
                     BrandHeader(
                         accent = accent,
                         showTagline = !lowHeight,
-                        modifier = Modifier.padding(top = 52.dp, start = 4.dp, end = 4.dp),
+                        modifier =
+                            Modifier
+                                .revealEntrance(revealProgress, 0)
+                                .padding(top = 52.dp, start = 4.dp, end = 4.dp),
                     )
                     Spacer(modifier = Modifier.height(14.dp))
                     GlassConsole(
@@ -231,12 +241,16 @@ fun HornScreen(
                         onSelectSpace = onSelectSpace,
                         onVolumeTriggerChanged = onVolumeTriggerChanged,
                         backdrop = glassBackdrop,
+                        modifier = Modifier.revealEntrance(revealProgress, 1),
                     )
                     Spacer(modifier = Modifier.weight(1f))
                     Footer(
                         state = state,
                         compact = false,
-                        modifier = Modifier.padding(bottom = 24.dp),
+                        modifier =
+                            Modifier
+                                .revealEntrance(revealProgress, 2)
+                                .padding(bottom = 24.dp),
                     )
                 }
                 HornHero(
@@ -271,11 +285,13 @@ fun HornScreen(
                     accent = accent,
                     showTagline = !lowHeight,
                     modifier =
-                        Modifier.padding(
-                            top = if (lowHeight) 48.dp else 56.dp,
-                            start = 24.dp,
-                            end = 24.dp,
-                        ),
+                        Modifier
+                            .revealEntrance(revealProgress, 0)
+                            .padding(
+                                top = if (lowHeight) 48.dp else 56.dp,
+                                start = 24.dp,
+                                end = 24.dp,
+                            ),
                 )
                 HornHero(
                     state = state,
@@ -304,13 +320,17 @@ fun HornScreen(
                     backdrop = glassBackdrop,
                     modifier =
                         Modifier
+                            .revealEntrance(revealProgress, 1)
                             .fillMaxWidth()
                             .padding(horizontal = 20.dp),
                 )
                 Footer(
                     state = state,
                     compact = lowHeight,
-                    modifier = Modifier.padding(bottom = 10.dp, start = 28.dp, end = 28.dp),
+                    modifier =
+                        Modifier
+                            .revealEntrance(revealProgress, 2)
+                            .padding(bottom = 10.dp, start = 28.dp, end = 28.dp),
                 )
             }
         }
@@ -375,6 +395,7 @@ fun HornScreen(
             accent = accent,
             telemetry = telemetry,
             readWaveform = readWaveform,
+            readWaveformStereo = readWaveformStereo,
             modifier =
                 Modifier
                     .align(Alignment.TopEnd)
@@ -398,6 +419,21 @@ fun HornScreen(
         }
     }
 }
+
+/**
+ * Staggered MERGE-handoff entrance for one main-UI island. Deferred read inside graphicsLayer:
+ * startup frames redraw without recomposition, and a default reveal provider of 1 keeps the
+ * screen pixel-identical outside the wake animation.
+ */
+private fun Modifier.revealEntrance(
+    reveal: () -> Float,
+    index: Int,
+): Modifier =
+    this.graphicsLayer {
+        val progress = revealStagger(reveal(), index)
+        alpha = progress
+        translationY = (1f - progress) * 24f * density
+    }
 
 @Composable
 private fun HornStatus.bannerLabel(): String =
@@ -585,13 +621,13 @@ private fun BrandHeader(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center,
         ) {
-            Box(
-                modifier =
-                    Modifier
-                        .size(6.dp)
-                        .background(accent, CircleShape),
+            Icon(
+                painter = painterResource(DesignR.drawable.ic_brand_mark),
+                contentDescription = null,
+                tint = accent,
+                modifier = Modifier.size(15.dp),
             )
-            Spacer(modifier = Modifier.size(9.dp))
+            Spacer(modifier = Modifier.size(8.dp))
             Text(
                 text = stringResource(R.string.brand_name),
                 color = MaterialTheme.colorScheme.onBackground,

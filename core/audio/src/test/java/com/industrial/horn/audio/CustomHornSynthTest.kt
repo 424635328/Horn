@@ -50,10 +50,12 @@ class CustomHornSynthTest {
                     profile,
                 )
             synth.reset()
-            val samples = FloatArray(DspMeasurement.SAMPLE_RATE)
-            synth.render(samples, samples.size)
+            val frames = DspMeasurement.SAMPLE_RATE
+            val stereo = FloatArray(2 * frames)
+            synth.render(stereo, frames)
+            val samples = DspMeasurement.monoFold(stereo, frames)
             assertTrue(samples.all { it.isFinite() })
-            assertTrue("Peak escaped bounds", DspMeasurement.peak(samples) <= 0.95)
+            assertTrue("Peak escaped bounds", DspMeasurement.peak(stereo) <= 0.95)
         }
     }
 
@@ -92,8 +94,9 @@ class CustomHornSynthTest {
     private fun renderProfile(profile: CustomHornProfile): FloatArray {
         val synth = CustomHornSynth(DspMeasurement.SAMPLE_RATE, profile)
         synth.reset()
-        val samples = FloatArray(DspMeasurement.SAMPLE_RATE)
-        synth.render(samples, samples.size)
-        return samples
+        val frames = DspMeasurement.SAMPLE_RATE
+        val stereo = FloatArray(2 * frames)
+        synth.render(stereo, frames)
+        return DspMeasurement.monoFold(stereo, frames)
     }
 }

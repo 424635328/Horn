@@ -77,10 +77,20 @@ class FallbackHornAudioEngine(
         fallback.setCustomProfile(profile)
     }
 
+    override fun setOutputMode(mode: OutputMode) {
+        primary?.setOutputMode(mode)
+        fallback.setOutputMode(mode)
+    }
+
     override fun telemetrySnapshot(): AudioTelemetry = (active ?: if (fallbackLocked) fallback else primary ?: fallback).telemetrySnapshot()
 
     override fun readWaveform(destination: FloatArray): Int =
         (active ?: if (fallbackLocked) fallback else primary ?: fallback).readWaveform(destination)
+
+    override fun readWaveformStereo(
+        left: FloatArray,
+        right: FloatArray,
+    ): Int = (active ?: if (fallbackLocked) fallback else primary ?: fallback).readWaveformStereo(left, right)
 
     override fun start(): Boolean {
         if (!fallbackLocked) {

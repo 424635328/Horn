@@ -11,6 +11,7 @@ import com.industrial.horn.audio.HornSessionEvent
 import com.industrial.horn.audio.HornStartResult
 import com.industrial.horn.audio.HornType
 import com.industrial.horn.audio.InterruptionReason
+import com.industrial.horn.audio.OutputMode
 import com.industrial.horn.data.HornPreferencesRepository
 import com.industrial.horn.data.HornSettings
 import com.industrial.horn.testing.MainDispatcherRule
@@ -434,6 +435,31 @@ class HornViewModelTest {
         }
 
     @Test
+    fun headphoneDetectionDrivesThePsychoacousticOutputMode() =
+        runTest(mainDispatcherRule.dispatcher) {
+            val session = FakeHornSession()
+            val safety = FakeSafetyMonitor()
+            val viewModel = HornViewModel(session, FakePreferencesRepository(), safety)
+            runCurrent()
+
+            safety.emit(AudioSafetyState(mediaVolume = 12, maxMediaVolume = 15, headphonesConnected = true))
+            runCurrent()
+            assertEquals(
+                "Headphones must engage the full-range chain",
+                OutputMode.HEADPHONE_FULL_RANGE,
+                session.lastOutputMode,
+            )
+
+            safety.emit(AudioSafetyState(mediaVolume = 12, maxMediaVolume = 15, headphonesConnected = false))
+            runCurrent()
+            assertEquals(
+                "Phone speaker must engage the Virtual Bass System",
+                OutputMode.SPEAKER_VBS,
+                session.lastOutputMode,
+            )
+        }
+
+    @Test
     fun telemetryPollingIsTightWhileHonkingAndRelaxedWhileIdle() {
         assertEquals(
             "Honking needs a tight 20 Hz feedback cadence",
@@ -468,7 +494,12 @@ class HornViewModelTest {
         var lastSpace: AcousticSpace? = null
         var lastProtection: Boolean? = null
         var lastCustomProfile: CustomHornProfile? = null
+        var lastOutputMode: OutputMode = OutputMode.SPEAKER_VBS
         var telemetry = AudioTelemetry(engineName = "Fake", rms = 0.4f)
+
+        override fun setOutputMode(mode: OutputMode) {
+            lastOutputMode = mode
+        }
 
         override fun start(type: HornType): HornStartResult {
             startCalls++

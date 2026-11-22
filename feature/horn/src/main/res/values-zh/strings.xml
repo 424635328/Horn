@@ -25,10 +25,13 @@
     <string name="acoustic_space_street">街道</string>
     <string name="acoustic_space_tunnel">隧道</string>
     <string name="acoustic_space_open_road">旷野</string>
+    <string name="acoustic_space_garage">地库</string>
     <string name="acoustic_space_street_description">街道声场</string>
     <string name="acoustic_space_tunnel_description">隧道声场</string>
     <string name="acoustic_space_open_road_description">旷野声场</string>
+    <string name="acoustic_space_garage_description">地下车库声场</string>
     <string name="volume_trigger_label">音量键</string>
+    <string name="startup_skip_hint">轻触跳过</string>
     <string name="volume_trigger_description">使用音量键作为鸣笛扳机</string>
     <string name="ear_protection_badge">护耳保护 · −6 dB</string>
     <string name="zero_volume_title">媒体音量为 0</string>

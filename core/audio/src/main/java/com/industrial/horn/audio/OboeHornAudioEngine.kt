@@ -22,7 +22,13 @@ class OboeHornAudioEngine : HornAudioEngine {
         )
     override val events: Flow<HornAudioEvent> = _events.asSharedFlow()
 
-    private val telemetryScratch = FloatArray(6)
+    /**
+     * JNI telemetry scratch, filled by `nativeReadTelemetry` (contract 00 §5):
+     * `[0]` rms, `[1]` latencyMs, `[2]` xrunCount, `[3]` renderMicros, `[4]` playing flag,
+     * `[5]` rmsLeft, `[6]` rmsRight, `[7]` stereo correlation, `[8]` OutputMode ordinal.
+     * The C++ mirror MUST write all nine slots.
+     */
+    private val telemetryScratch = FloatArray(9)
     private val released = AtomicBoolean(false)
 
     @Volatile
@@ -78,6 +84,11 @@ class OboeHornAudioEngine : HornAudioEngine {
         )
     }
 
+    override fun setOutputMode(mode: OutputMode) {
+        val current = handle
+        if (current != 0L) nativeSetOutputMode(current, mode.ordinal)
+    }
+
     override fun telemetrySnapshot(): AudioTelemetry {
         val current = handle
         if (current == 0L) return AudioTelemetry(engineName = ENGINE_NAME)
@@ -85,6 +96,10 @@ class OboeHornAudioEngine : HornAudioEngine {
         return AudioTelemetry(
             engineName = ENGINE_NAME,
             rms = telemetryScratch[0],
+            rmsLeft = telemetryScratch[5],
+            rmsRight = telemetryScratch[6],
+            stereoCorrelation = telemetryScratch[7],
+            outputMode = OutputMode.fromOrdinal(telemetryScratch[8].toInt()),
             latencyMs = telemetryScratch[1],
             xrunCount = telemetryScratch[2].toLong(),
             renderTimeMicros = telemetryScratch[3].toInt(),
@@ -96,6 +111,15 @@ class OboeHornAudioEngine : HornAudioEngine {
         val current = handle
         if (current == 0L) return 0
         return nativeReadWaveform(current, destination)
+    }
+
+    override fun readWaveformStereo(
+        left: FloatArray,
+        right: FloatArray,
+    ): Int {
+        val current = handle
+        if (current == 0L) return 0
+        return nativeReadWaveformStereo(current, left, right)
     }
 
     override fun start(): Boolean {
@@ -194,6 +218,12 @@ class OboeHornAudioEngine : HornAudioEngine {
     )
 
     @Keep
+    private external fun nativeSetOutputMode(
+        handle: Long,
+        mode: Int,
+    )
+
+    @Keep
     private external fun nativeReadTelemetry(
         handle: Long,
         destination: FloatArray,
@@ -203,5 +233,12 @@ class OboeHornAudioEngine : HornAudioEngine {
     private external fun nativeReadWaveform(
         handle: Long,
         destination: FloatArray,
+    ): Int
+
+    @Keep
+    private external fun nativeReadWaveformStereo(
+        handle: Long,
+        left: FloatArray,
+        right: FloatArray,
     ): Int
 }

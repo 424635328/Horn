@@ -236,7 +236,7 @@ Key 常量声明在 `DataStoreHornPreferencesRepository` 的 `private companion 
 | 常量 | Key 类型 | 存储名 | 值域与映射 | 缺省回退 |
 |---|---|---|---|---|
 | `SELECTED_HORN_KEY` | `stringPreferencesKey` | `selected_horn` | `HornType.storageKey`：`car`/`train`/`ebike`/`motorcycle`/`custom` | `HornType.CAR` |
-| `ACOUSTIC_SPACE_KEY` | `stringPreferencesKey` | `acoustic_space` | `AcousticSpace.storageKey`：`street`/`tunnel`/`open_road` | `AcousticSpace.STREET` |
+| `ACOUSTIC_SPACE_KEY` | `stringPreferencesKey` | `acoustic_space` | `AcousticSpace.storageKey`：`street`/`tunnel`/`open_road`/`garage`（v3.6 新增；旧版本读到 `garage` MUST 回落 `STREET` 优雅降级） | `AcousticSpace.STREET` |
 | `VOLUME_TRIGGER_KEY` | `booleanPreferencesKey` | `volume_trigger_enabled` | 音量键触发开关 | `false` |
 | `CUSTOM_PRIMARY_KEY` | `floatPreferencesKey` | `custom_primary_hz` | 主频 Hz，`sanitized()` 钳至 150–3000 | `620f` |
 | `CUSTOM_RATIO_KEY` | `floatPreferencesKey` | `custom_secondary_ratio` | 次频比，钳至 0.5–2 | `1.5f` |

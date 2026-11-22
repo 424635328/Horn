@@ -1,5 +1,7 @@
 package com.industrial.horn.audio
 
+import com.industrial.horn.audio.dsp.DspConstants
+
 /** Immutable acoustic calibration data for one voice. */
 data class HornVoiceProfile(
     val type: HornType,
@@ -43,28 +45,28 @@ object HornVoiceCatalog {
                     type = HornType.CAR,
                     attackMillis = 12f,
                     releaseMillis = 14f,
-                    makeupGain = 0.47f,
+                    makeupGain = DspConstants.MAKEUP_CAR,
                 ),
             HornType.TRAIN to
                 HornVoiceProfile(
                     type = HornType.TRAIN,
                     attackMillis = 65f,
                     releaseMillis = 185f,
-                    makeupGain = 0.52f,
+                    makeupGain = DspConstants.MAKEUP_TRAIN,
                 ),
             HornType.EBIKE to
                 HornVoiceProfile(
                     type = HornType.EBIKE,
                     attackMillis = 4f,
                     releaseMillis = 6f,
-                    makeupGain = 0.18f,
+                    makeupGain = DspConstants.MAKEUP_EBIKE,
                 ),
             HornType.MOTORCYCLE to
                 HornVoiceProfile(
                     type = HornType.MOTORCYCLE,
                     attackMillis = 8f,
                     releaseMillis = 10f,
-                    makeupGain = 0.30f,
+                    makeupGain = DspConstants.MAKEUP_MOTORCYCLE,
                 ),
         )
 
@@ -78,7 +80,7 @@ object HornVoiceCatalog {
                 type = HornType.CUSTOM,
                 attackMillis = custom.attackMillis,
                 releaseMillis = custom.releaseMillis,
-                makeupGain = 0.22f,
+                makeupGain = DspConstants.MAKEUP_CUSTOM,
             )
         } else {
             checkNotNull(fixedProfiles[type])

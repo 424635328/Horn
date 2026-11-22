@@ -10,17 +10,33 @@ import kotlin.math.sqrt
 internal object DspMeasurement {
     const val SAMPLE_RATE = 48_000
 
+    /** Renders the raw synthesizer and returns the mono fold `(L+R)/2` of the stereo output. */
     fun renderRaw(
         type: HornType,
         seconds: Double = 3.0,
     ): FloatArray {
         val synth = HornSynthesizerFactory.create(type, SAMPLE_RATE)
         synth.reset()
-        val samples = FloatArray((SAMPLE_RATE * seconds).toInt())
-        synth.render(samples, samples.size)
-        return samples
+        val frames = (SAMPLE_RATE * seconds).toInt()
+        val stereo = FloatArray(2 * frames)
+        synth.render(stereo, frames)
+        return monoFold(stereo, frames)
     }
 
+    /** Renders the raw synthesizer as interleaved stereo, no fold. */
+    fun renderRawStereo(
+        type: HornType,
+        seconds: Double = 3.0,
+    ): FloatArray {
+        val synth = HornSynthesizerFactory.create(type, SAMPLE_RATE)
+        synth.reset()
+        val frames = (SAMPLE_RATE * seconds).toInt()
+        val stereo = FloatArray(2 * frames)
+        synth.render(stereo, frames)
+        return stereo
+    }
+
+    /** Renders through the full [HornRenderer] pipeline and returns the mono fold. */
     fun renderThroughVoice(
         type: HornType,
         seconds: Double = 2.0,
@@ -28,17 +44,28 @@ internal object DspMeasurement {
         val renderer = HornRenderer(SAMPLE_RATE, FRAMES_PER_BLOCK, type)
         val totalFrames = (SAMPLE_RATE * seconds).toInt()
         val blocks = totalFrames / FRAMES_PER_BLOCK
-        val output = FloatArray(blocks * FRAMES_PER_BLOCK)
+        val stereo = FloatArray(2 * blocks * FRAMES_PER_BLOCK)
         renderer.start()
         for (block in 0 until blocks) {
             val frames = renderer.renderBlock()
-            for (index in 0 until frames) {
-                output[block * FRAMES_PER_BLOCK + index] =
-                    renderer.outputBuffer[index] / 32_768f
+            for (index in 0 until 2 * frames) {
+                stereo[block * 2 * FRAMES_PER_BLOCK + index] = renderer.outputBuffer[index]
             }
         }
         renderer.panic()
-        return output
+        return monoFold(stereo, blocks * FRAMES_PER_BLOCK)
+    }
+
+    /** Mono fold `(L+R)/2` of an interleaved stereo buffer (02 §5). */
+    fun monoFold(
+        stereo: FloatArray,
+        frames: Int,
+    ): FloatArray {
+        val folded = FloatArray(frames)
+        for (index in 0 until frames) {
+            folded[index] = (stereo[2 * index] + stereo[2 * index + 1]) * 0.5f
+        }
+        return folded
     }
 
     fun rms(

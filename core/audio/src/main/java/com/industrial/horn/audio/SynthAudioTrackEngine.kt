@@ -9,14 +9,15 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlin.math.max
+import kotlin.math.roundToInt
 
 /**
  * Low-latency AudioTrack backend.
  *
- * AudioTrack is opened in streaming mode with `PERFORMANCE_MODE_LOW_LATENCY` and 48 kHz mono
- * 16-bit PCM. Rendering happens on one dedicated `THREAD_PRIORITY_URGENT_AUDIO` thread; the
- * main thread only flips a request flag. Press -> audible output therefore does not involve
- * Compose, coroutines, or allocation on the audio path.
+ * AudioTrack is opened in streaming mode with `PERFORMANCE_MODE_LOW_LATENCY` and 48 kHz stereo
+ * Float32 PCM (contract 00 §1 C1/C8). Rendering happens on one dedicated
+ * `THREAD_PRIORITY_URGENT_AUDIO` thread; the main thread only flips a request flag. Press ->
+ * audible output therefore does not involve Compose, coroutines, or allocation on the audio path.
  *
  * The writer keeps a small 5 ms block size so stop/panic can silence the track within one block.
  */
@@ -39,6 +40,12 @@ class SynthAudioTrackEngine(
 
     private val renderer = HornRenderer(sampleRate = sampleRate, framesPerBlock = framesPerBlock)
     private val telemetry = AudioTelemetryBuffer(ENGINE_NAME)
+
+    // Preallocated telemetry scratch (PCM16 exists only in this telemetry mirror, 00 §1 C8).
+    private val telemetryLeft = FloatArray(framesPerBlock)
+    private val telemetryRight = FloatArray(framesPerBlock)
+    private val pcmLeft = ShortArray(framesPerBlock)
+    private val pcmRight = ShortArray(framesPerBlock)
 
     private var audioTrack: AudioTrack? = null
     private var writerThread: Thread? = null
@@ -84,9 +91,18 @@ class SynthAudioTrackEngine(
         renderer.setCustomProfile(profile)
     }
 
+    override fun setOutputMode(mode: OutputMode) {
+        renderer.setOutputMode(mode)
+    }
+
     override fun telemetrySnapshot(): AudioTelemetry = telemetry.snapshot()
 
     override fun readWaveform(destination: FloatArray): Int = telemetry.readWaveform(destination)
+
+    override fun readWaveformStereo(
+        left: FloatArray,
+        right: FloatArray,
+    ): Int = telemetry.readWaveformStereo(left, right)
 
     override fun start(): Boolean {
         synchronized(lock) {
@@ -165,8 +181,8 @@ class SynthAudioTrackEngine(
         val minBufferSize =
             AudioTrack.getMinBufferSize(
                 sampleRate,
-                AudioFormat.CHANNEL_OUT_MONO,
-                AudioFormat.ENCODING_PCM_16BIT,
+                AudioFormat.CHANNEL_OUT_STEREO,
+                AudioFormat.ENCODING_PCM_FLOAT,
             )
         check(minBufferSize > 0) { "AudioTrack min buffer unavailable: $minBufferSize" }
 
@@ -180,9 +196,9 @@ class SynthAudioTrackEngine(
         val format =
             AudioFormat
                 .Builder()
-                .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                .setEncoding(AudioFormat.ENCODING_PCM_FLOAT)
                 .setSampleRate(sampleRate)
-                .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                .setChannelMask(AudioFormat.CHANNEL_OUT_STEREO)
                 .build()
 
         val track =
@@ -261,7 +277,7 @@ class SynthAudioTrackEngine(
                         track.write(
                             renderer.outputBuffer,
                             0,
-                            frames,
+                            frames * 2,
                             AudioTrack.WRITE_BLOCKING,
                         )
                     if (written < 0) {
@@ -274,14 +290,31 @@ class SynthAudioTrackEngine(
                     val latencyMs =
                         track.bufferSizeInFrames * 1_000f / sampleRate +
                             frames * 1_000f / sampleRate
-                    telemetry.update(
-                        rms = telemetry.calculateRms(renderer.outputBuffer, frames),
+                    val interleaved = renderer.outputBuffer
+                    for (frame in 0 until frames) {
+                        val left = interleaved[2 * frame]
+                        val right = interleaved[2 * frame + 1]
+                        telemetryLeft[frame] = left
+                        telemetryRight[frame] = right
+                        pcmLeft[frame] = pcm16(left)
+                        pcmRight[frame] = pcm16(right)
+                    }
+                    telemetry.updateStereo(
+                        rmsLeft = telemetry.calculateRms(pcmLeft, frames),
+                        rmsRight = telemetry.calculateRms(pcmRight, frames),
+                        correlation =
+                            AudioTelemetryBuffer.stereoCorrelation(
+                                telemetryLeft,
+                                telemetryRight,
+                                frames,
+                            ),
+                        outputMode = renderer.currentOutputMode,
                         latencyMs = latencyMs,
                         xrunCount = track.underrunCount.toLong(),
                         renderMicros = renderMicros,
                         isPlaying = true,
                     )
-                    telemetry.pushWaveform(renderer.outputBuffer, frames)
+                    telemetry.pushWaveformStereo(pcmLeft, pcmRight, frames)
 
                     if (synchronized(lock) { panicGeneration != activeGeneration }) break
                     if (!requested && renderer.isSilent) break
@@ -291,8 +324,11 @@ class SynthAudioTrackEngine(
                     if (track.playState == AudioTrack.PLAYSTATE_PLAYING) track.pause()
                 }
                 runCatching { track.flush() }
-                telemetry.update(
-                    rms = 0f,
+                telemetry.updateStereo(
+                    rmsLeft = 0f,
+                    rmsRight = 0f,
+                    correlation = 1f,
+                    outputMode = renderer.currentOutputMode,
                     latencyMs = 0f,
                     xrunCount = track.underrunCount.toLong(),
                     renderMicros = 0,
@@ -353,11 +389,14 @@ class SynthAudioTrackEngine(
         }
     }
 
+    /** PCM16 mirror conversion used only by the telemetry path (00 §1 C8). */
+    private fun pcm16(sample: Float): Short = (sample * 32_767f).roundToInt().coerceIn(-32_768, 32_767).toShort()
+
     private companion object {
         const val ENGINE_NAME = "AudioTrack JVM"
         const val SAMPLE_RATE = 48_000
         const val FRAMES_PER_BLOCK = 240
-        const val BYTES_PER_FRAME = 2
+        const val BYTES_PER_FRAME = 8 // 2 channels x Float32
         const val BUFFER_BLOCKS = 4
         const val RELEASE_JOIN_TIMEOUT_MS = 500L
     }

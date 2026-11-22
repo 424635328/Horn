@@ -31,10 +31,26 @@ interface HornAudioEngine {
 
     fun setCustomProfile(profile: CustomHornProfile)
 
+    /**
+     * Selects the psychoacoustic output stage (contract 00 §5). Production engines MUST override
+     * this method; the default keeps test stubs compiling and behaves as `SPEAKER_VBS`.
+     */
+    fun setOutputMode(mode: OutputMode) = Unit
+
     fun telemetrySnapshot(): AudioTelemetry
 
     /** Fills [destination] with the newest real PCM samples; returns the count written. */
     fun readWaveform(destination: FloatArray): Int
+
+    /**
+     * Stereo waveform mirror (contract 00 §5): newest samples per channel in chronological order.
+     * Production engines MUST override this method; the default keeps test stubs compiling and
+     * reports zero samples.
+     */
+    fun readWaveformStereo(
+        left: FloatArray,
+        right: FloatArray,
+    ): Int = 0
 
     /** Requests audible output. Returns false only when the engine has already been released. */
     fun start(): Boolean

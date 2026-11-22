@@ -1,24 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Launcher foreground: titanium horn emitting amber pressure waves.
+     Geometry stays inside the adaptive-icon 66dp safe circle (viewport 108, center 54). -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <group
-        android:scaleX="1.5"
-        android:scaleY="1.5"
-        android:translateX="19.5"
-        android:translateY="22.5">
-        <path
-            android:fillColor="#FFD18A"
-            android:pathData="M15,15 C18.5,15 21.5,16.5 24,18.5 L35,11.5 C37.5,10 40,11.7 40,14.5 L40,29.5 C40,32.3 37.5,34 35,32.5 L24,25.5 C21.5,27.5 18.5,29 15,29 C8.8,29 4,25 4,22 C4,18.4 8.8,15 15,15 Z" />
-        <path
-            android:fillColor="#FF9F1C"
-            android:pathData="M17,28.5 L25,33 L23.5,38 L15,34 Z" />
-        <path
-            android:fillColor="#00000000"
-            android:pathData="M43,17 C46.5,19.5 46.5,24.5 43,27"
-            android:strokeColor="#FFD18A"
-            android:strokeLineCap="round"
-            android:strokeWidth="2.4" />
-    </group>
+
+    <!-- Driver block -->
+    <path android:pathData="M32,47 h8 a4,4 0 0 1 4,4 v6 a4,4 0 0 1 -4,4 h-8 a4,4 0 0 1 -4,-4 v-6 a4,4 0 0 1 4,-4 z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="28" android:startY="47"
+                android:endX="28" android:endY="61">
+                <item android:offset="0" android:color="#FFDCE4EA" />
+                <item android:offset="1" android:color="#FF5F6E7A" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Bell (flared horn body) -->
+    <path android:pathData="M42,48 C52,45 58,41 66,38 L66,70 C58,67 52,63 42,60 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="42" android:startY="38"
+                android:endX="42" android:endY="70">
+                <item android:offset="0" android:color="#FFF4F8FB" />
+                <item android:offset="0.55" android:color="#FFAEBDC9" />
+                <item android:offset="1" android:color="#FF5E6D79" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Specular streak along the bell crown -->
+    <path
+        android:pathData="M45,50 C53,47 59,43.5 63.5,41"
+        android:strokeColor="#66FFFFFF"
+        android:strokeLineCap="round"
+        android:strokeWidth="2" />
+
+    <!-- Amber mouth rim -->
+    <path
+        android:pathData="M66,38 C70,45 70,63 66,70"
+        android:strokeColor="#FFFFB547"
+        android:strokeLineCap="round"
+        android:strokeWidth="3.2" />
+
+    <!-- Pressure waves -->
+    <path
+        android:pathData="M70,42 C73,47 73,61 70,66"
+        android:strokeColor="#FFFFB547"
+        android:strokeLineCap="round"
+        android:strokeWidth="2.6" />
+    <path
+        android:pathData="M75.5,38 C79.5,45 79.5,63 75.5,70"
+        android:strokeColor="#B3FFB547"
+        android:strokeLineCap="round"
+        android:strokeWidth="2.4" />
+    <path
+        android:pathData="M81,36 C85,44 85,64 81,72"
+        android:strokeColor="#66FFB547"
+        android:strokeLineCap="round"
+        android:strokeWidth="2.2" />
 </vector>

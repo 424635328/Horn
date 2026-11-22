@@ -12,6 +12,7 @@ import com.industrial.horn.audio.HornSessionEvent
 import com.industrial.horn.audio.HornStartResult
 import com.industrial.horn.audio.HornType
 import com.industrial.horn.audio.NoOpAudioSafetyMonitor
+import com.industrial.horn.audio.OutputMode
 import com.industrial.horn.data.HornPreferencesRepository
 import com.industrial.horn.data.HornSettings
 import kotlinx.coroutines.Job
@@ -60,6 +61,15 @@ class HornViewModel(
                     )
                 }
                 session.setProtection(safety.earProtectionActive)
+                // Psychoacoustic stage follows the listening device: headphones get the pure
+                // full-range chain, the phone speaker gets the Virtual Bass System.
+                session.setOutputMode(
+                    if (safety.headphonesConnected) {
+                        OutputMode.HEADPHONE_FULL_RANGE
+                    } else {
+                        OutputMode.SPEAKER_VBS
+                    },
+                )
             }
         }
         viewModelScope.launch {
@@ -240,6 +250,11 @@ class HornViewModel(
 
     /** Debug overlay bridge; consumes the engine's real telemetry ring, never a synthetic wave. */
     fun readWaveform(destination: FloatArray): Int = runCatching { session.readWaveform(destination) }.getOrDefault(0)
+
+    fun readWaveformStereo(
+        left: FloatArray,
+        right: FloatArray,
+    ): Int = runCatching { session.readWaveformStereo(left, right) }.getOrDefault(0)
 
     /** Called from Activity.onPause: incoming call, lock screen, config change, recents, etc. */
     fun onHostPause() {

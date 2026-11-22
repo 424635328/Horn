@@ -19,9 +19,24 @@ interface HornSession {
 
     fun setCustomProfile(profile: CustomHornProfile)
 
+    /**
+     * Selects the psychoacoustic output stage (contract 00 §5); forwarded to the engine.
+     * The default keeps test stubs compiling; [DefaultHornSession] MUST override it.
+     */
+    fun setOutputMode(mode: OutputMode) = Unit
+
     fun telemetrySnapshot(): AudioTelemetry
 
     fun readWaveform(destination: FloatArray): Int
+
+    /**
+     * Stereo waveform mirror (contract 00 §5). The default keeps test stubs compiling;
+     * [DefaultHornSession] MUST override it.
+     */
+    fun readWaveformStereo(
+        left: FloatArray,
+        right: FloatArray,
+    ): Int = 0
 
     fun stop()
 

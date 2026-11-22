@@ -25,10 +25,13 @@
     <string name="acoustic_space_street">Street</string>
     <string name="acoustic_space_tunnel">Tunnel</string>
     <string name="acoustic_space_open_road">Open road</string>
+    <string name="acoustic_space_garage">Garage</string>
     <string name="acoustic_space_street_description">Street acoustic space</string>
     <string name="acoustic_space_tunnel_description">Tunnel acoustic space</string>
     <string name="acoustic_space_open_road_description">Open road acoustic space</string>
+    <string name="acoustic_space_garage_description">Underground garage acoustic space</string>
     <string name="volume_trigger_label">VOL KEY</string>
+    <string name="startup_skip_hint">Tap to skip</string>
     <string name="volume_trigger_description">Use volume keys as horn trigger</string>
     <string name="ear_protection_badge">EAR PROTECTION · −6 dB</string>
     <string name="zero_volume_title">Media volume is 0</string>

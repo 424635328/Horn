@@ -1,41 +1,22 @@
 package com.industrial.horn.audio
 
 /**
- * Lightweight Schroeder spaces. Values are used by the zero-allocation Kotlin reverb and mirrored
- * by the native Oboe renderer.
+ * Playback spaces of the scene engine. The enum carries only its persistence identity: every DSP
+ * parameter lives in `dsp/SceneSpecCatalog` (docs/spec/research/02 §4 is the single source of
+ * truth) so UI/persistence concerns stay out of the acoustic model.
+ *
+ * Ordinals are part of the JNI contract (`nativeSetSpace(int)`): STREET=0, TUNNEL=1,
+ * OPEN_ROAD=2, GARAGE=3. Appending GARAGE at the end keeps persisted strings and native
+ * ordinals compatible; [fromStorageKey] falls back to [STREET] for unknown keys so older
+ * installs degrade gracefully.
  */
 enum class AcousticSpace(
     val storageKey: String,
-    val wetMix: Float,
-    val feedback: Float,
-    val damping: Float,
-    val preDelayMillis: Float,
-    val tailBlocks: Int,
 ) {
-    STREET(
-        storageKey = "street",
-        wetMix = 0.10f,
-        feedback = 0.58f,
-        damping = 0.35f,
-        preDelayMillis = 8f,
-        tailBlocks = 12,
-    ),
-    TUNNEL(
-        storageKey = "tunnel",
-        wetMix = 0.38f,
-        feedback = 0.84f,
-        damping = 0.22f,
-        preDelayMillis = 18f,
-        tailBlocks = 240,
-    ),
-    OPEN_ROAD(
-        storageKey = "open_road",
-        wetMix = 0.22f,
-        feedback = 0.66f,
-        damping = 0.52f,
-        preDelayMillis = 34f,
-        tailBlocks = 80,
-    ),
+    STREET("street"),
+    TUNNEL("tunnel"),
+    OPEN_ROAD("open_road"),
+    GARAGE("garage"),
     ;
 
     companion object {

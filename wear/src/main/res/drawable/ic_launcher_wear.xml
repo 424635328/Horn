@@ -1,12 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Wear launcher: the titanium mark on a dark disc, matched to the round watch face. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
     android:width="48dp"
     android:height="48dp"
-    android:viewportWidth="48"
-    android:viewportHeight="48">
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path android:pathData="M54,54 m-54,0 a54,54 0 1,0 108,0 a54,54 0 1,0 -108,0">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="radial"
+                android:centerX="54" android:centerY="42"
+                android:gradientRadius="78">
+                <item android:offset="0" android:color="#FF27333F" />
+                <item android:offset="1" android:color="#FF0B1116" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
     <path
-        android:fillColor="#FF101519"
-        android:pathData="M24,24 m-24,0 a24,24 0 1,0 48,0 a24,24 0 1,0 -48,0" />
+        android:fillColor="#FFDCE4EA"
+        android:pathData="M32,47 h8 a4,4 0 0 1 4,4 v6 a4,4 0 0 1 -4,4 h-8 a4,4 0 0 1 -4,-4 v-6 a4,4 0 0 1 4,-4 z" />
+    <path android:pathData="M42,48 C52,45 58,41 66,38 L66,70 C58,67 52,63 42,60 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="42" android:startY="38"
+                android:endX="42" android:endY="70">
+                <item android:offset="0" android:color="#FFF4F8FB" />
+                <item android:offset="1" android:color="#FF6A7885" />
+            </gradient>
+        </aapt:attr>
+    </path>
     <path
-        android:fillColor="#FFFFB547"
-        android:pathData="M12,20 L26,20 L34,14 L34,34 L26,28 L12,28 Z M37,20 C39,21.6 39,26.4 37,28 M40,17 C43.6,20.2 43.6,27.8 40,31" />
+        android:pathData="M66,38 C70,45 70,63 66,70"
+        android:strokeColor="#FFFFB547"
+        android:strokeLineCap="round"
+        android:strokeWidth="3.2" />
+    <path
+        android:pathData="M70,42 C73,47 73,61 70,66"
+        android:strokeColor="#FFFFB547"
+        android:strokeLineCap="round"
+        android:strokeWidth="2.6" />
+    <path
+        android:pathData="M76,38 C80,45 80,63 76,70"
+        android:strokeColor="#80FFB547"
+        android:strokeLineCap="round"
+        android:strokeWidth="2.4" />
 </vector>

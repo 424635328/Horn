@@ -1,23 +1,39 @@
 package com.industrial.horn.audio
 
-import com.industrial.horn.audio.dsp.softSaturate
+import com.industrial.horn.audio.dsp.DspConstants
+import com.industrial.horn.audio.dsp.LoudnessTable
+import com.industrial.horn.audio.dsp.OnePoleSmoother
+import com.industrial.horn.audio.dsp.OutputModeChain
+import com.industrial.horn.audio.dsp.SceneSpecCatalog
+import com.industrial.horn.audio.dsp.StereoOutputStage
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
-import kotlin.math.roundToInt
 
 /**
- * Pure-JVM real-time renderer used by the AudioTrack backend.
+ * Pure-JVM real-time stereo renderer used by the AudioTrack backend. Pipeline order is frozen by
+ * docs/spec/research/00 §4:
+ *
+ * ```
+ * physical exciter (band-limited, transients, nonlinear steepening)
+ *   -> multi-horn stereo placement (inside the synths, amplitude-dominant)
+ *   -> master envelope / voice gain
+ *   -> scene processing (ISM early reflections -> FDN late tail -> common colouring
+ *      -> ISO 9613-1 atmosphere -> dry/wet + width)
+ *   -> output mode (speaker VBS / headphone width chain, equal-power crossfade)
+ *   -> loudness feed-forward G (03 §4) -> ear protection
+ *   -> StereoOutputStage (true peak -> look-ahead soft limiter -> tanh(1.0) -> +/-0.98)
+ *   -> interleaved Float32 output
+ * ```
  *
  * Threading contract:
- *  - [requestType], [setExpression], [setAcousticSpace], [setProtection] and [setCustomProfile]
- *    may be called from any thread; each publishes only an atomic value.
+ *  - [requestType], [setExpression], [setAcousticSpace], [setProtection], [setCustomProfile] and
+ *    [setOutputMode] may be called from any thread; each publishes only an atomic value.
  *  - every other mutating method and [renderBlock] belong to the single audio thread.
  *
- * A type change never swaps a waveform underneath a live sample. The old voice receives its
+ * A type change never swaps a waveform underneath a live sample: the old voice receives its
  * release envelope, reaches exact silence, and only then is the new voice reset and attacked.
- * This makes rapid UI switching, including a switch during a held honk, click-free and free of
- * data races. All normal render buffers are preallocated; only a deliberate Custom profile
- * change rebuilds its voice at a silent boundary.
+ * All render buffers are preallocated; only a deliberate Custom profile change rebuilds its voice
+ * at a silent boundary.
  */
 class HornRenderer(
     val sampleRate: Int,
@@ -34,15 +50,17 @@ class HornRenderer(
     private val acousticSpace = AtomicReference(AcousticSpace.STREET)
     private val protectionEnabled = AtomicInteger(0)
     private val customProfile = AtomicReference(CustomHornProfile.DEFAULT)
+    private val outputMode = AtomicReference(OutputMode.SPEAKER_VBS)
 
     private val voices =
         Array(HornType.entries.size) { index ->
             HornVoiceCatalog.createVoice(HornType.entries[index], sampleRate)
         }
-    private val pcmRenderer = PcmRenderer(maxFrames = framesPerBlock)
-    private val reverb = SpatialReverb(sampleRate)
-    private val output = ShortArray(framesPerBlock)
-    private val floatBlock = FloatArray(framesPerBlock)
+    private val scene = SceneEngine(sampleRate)
+    private val modeChain = OutputModeChain(sampleRate)
+    private val outputStage = StereoOutputStage()
+    private val gainSmoother = OnePoleSmoother(sampleRate, GAIN_SMOOTHING_MILLIS, 0f)
+    private val output = FloatArray(2 * framesPerBlock)
 
     private var appliedCustomProfile = CustomHornProfile.DEFAULT
     private var currentType = initialType
@@ -52,7 +70,8 @@ class HornRenderer(
     private var tailPending = false
     private var tailBlocksRemaining = 0
 
-    val outputBuffer: ShortArray
+    /** Interleaved stereo output block (`buffer[2i]` = left, `buffer[2i+1]` = right). */
+    val outputBuffer: FloatArray
         get() = output
 
     val activeType: HornType
@@ -60,6 +79,9 @@ class HornRenderer(
 
     val isPlaying: Boolean
         get() = playing
+
+    val currentOutputMode: OutputMode
+        get() = outputMode.get()
 
     val isSilent: Boolean
         get() =
@@ -90,6 +112,10 @@ class HornRenderer(
         customProfile.set(profile.sanitized())
     }
 
+    fun setOutputMode(mode: OutputMode) {
+        outputMode.set(mode)
+    }
+
     fun start() {
         if (playing) return
         playing = true
@@ -104,7 +130,7 @@ class HornRenderer(
             pendingType = null
         } else if (desired != currentType) {
             pendingType = desired
-            currentVoice.envelope.noteOff()
+            noteOff(currentVoice)
             return
         }
 
@@ -113,13 +139,13 @@ class HornRenderer(
             voice.synthesizer.reset()
         }
         voice.synthesizer.setExpression(currentExpression())
-        voice.envelope.noteOn()
+        noteOn(voice)
     }
 
     fun stop() {
         playing = false
         tailPending = true
-        voice(currentType).envelope.noteOff()
+        noteOff(voice(currentType))
     }
 
     fun panic() {
@@ -131,7 +157,9 @@ class HornRenderer(
         val voice = voice(currentType)
         voice.envelope.reset()
         voice.synthesizer.reset()
-        reverb.reset()
+        scene.reset()
+        modeChain.reset()
+        outputStage.reset()
     }
 
     /**
@@ -145,62 +173,82 @@ class HornRenderer(
         val voice = voice(currentType)
         val active = voice.envelope.isActive
         if (!active && (previousEnvelopeActive || tailPending)) {
-            tailBlocksRemaining = acousticSpace.get().tailBlocks
+            tailBlocksRemaining = tailBlocks()
             previousEnvelopeActive = false
             tailPending = false
         }
 
         if (!active) {
             if (tailBlocksRemaining <= 0) return 0
-            floatBlock.fill(0f)
-            renderSpatialTail()
+            for (index in output.indices) output[index] = 0f
             tailBlocksRemaining--
+            renderThroughPipeline(envelope = null)
             return framesPerBlock
         }
 
         previousEnvelopeActive = true
         voice.synthesizer.setExpression(currentExpression())
-        val gain = voice.makeupGain * if (protectionEnabled.get() == 1) PROTECTION_GAIN else 1f
-        pcmRenderer.render(
-            synthesizer = voice.synthesizer,
-            envelope = voice.envelope,
-            output = output,
-            frameCount = framesPerBlock,
-            voiceGain = gain,
-        )
-        processPcmThroughReverb()
+        voice.synthesizer.render(output, framesPerBlock)
+        renderThroughPipeline(envelope = voice.envelope)
         return framesPerBlock
     }
 
-    private fun renderSpatialTail() {
-        reverb.setSpace(acousticSpace.get())
-        reverb.process(floatBlock, framesPerBlock)
-        writeLimitedPcm()
+    /** Scene -> output mode -> loudness G -> protection -> hard-bounded output stage. */
+    private fun renderThroughPipeline(envelope: AttackReleaseEnvelope?) {
+        scene.setSpace(acousticSpace.get())
+        scene.process(output, framesPerBlock)
+
+        val mode = outputMode.get()
+        modeChain.setMode(mode)
+        modeChain.setInjection(currentInjection())
+        modeChain.process(output, framesPerBlock)
+
+        val targetGain = currentGain(mode)
+        if (envelope == null) {
+            for (frame in 0 until framesPerBlock) {
+                val gain = gainSmoother.next(targetGain)
+                output[2 * frame] *= gain
+                output[2 * frame + 1] *= gain
+            }
+        } else {
+            for (frame in 0 until framesPerBlock) {
+                val gain = gainSmoother.next(targetGain) * envelope.nextSample()
+                output[2 * frame] *= gain
+                output[2 * frame + 1] *= gain
+            }
+        }
+        outputStage.process(output, framesPerBlock)
     }
 
-    private fun processPcmThroughReverb() {
-        for (index in 0 until framesPerBlock) {
-            floatBlock[index] = output[index] / 32_768f
-        }
-        reverb.setSpace(acousticSpace.get())
-        reverb.process(floatBlock, framesPerBlock)
-        writeLimitedPcm()
-    }
+    private fun currentGain(mode: OutputMode): Float =
+        LoudnessTable.totalGain(
+            type = currentType,
+            space = acousticSpace.get(),
+            mode = mode,
+            protectionActive = protectionEnabled.get() == 1,
+        )
 
-    private fun writeLimitedPcm() {
-        for (index in 0 until framesPerBlock) {
-            val limited =
-                softSaturate(floatBlock[index].toDouble(), REVERB_LIMITER_DRIVE)
-                    .coerceIn(-HARD_CEILING, HARD_CEILING)
-            output[index] =
-                (limited * Short.MAX_VALUE)
-                    .roundToInt()
-                    .coerceIn(PCM_MIN, PCM_MAX)
-                    .toShort()
-        }
+    private fun currentInjection(): Float = LoudnessTable.vbsInjection(currentType, appliedCustomProfile.primaryFrequencyHz)
+
+    private fun tailBlocks(): Int {
+        val tailMillis = SceneSpecCatalog.spec(acousticSpace.get()).tailMillis
+        val tailFrames = (sampleRate * tailMillis / 1_000f).toInt()
+        return ((tailFrames + framesPerBlock - 1) / framesPerBlock).coerceAtLeast(1)
     }
 
     private fun currentExpression(): Float = java.lang.Float.intBitsToFloat(expressionBits.get())
+
+    private fun noteOn(voice: HornVoice) {
+        voice.envelope.noteOn()
+        val synth = voice.synthesizer
+        if (synth is NoteAwareSynthesizer) synth.setNoteActive(true)
+    }
+
+    private fun noteOff(voice: HornVoice) {
+        voice.envelope.noteOff()
+        val synth = voice.synthesizer
+        if (synth is NoteAwareSynthesizer) synth.setNoteActive(false)
+    }
 
     private fun reconcileType() {
         val desired = requestedType.get()
@@ -210,21 +258,21 @@ class HornRenderer(
             if (voice(currentType).envelope.isSilent) {
                 switchTo(desired)
                 pendingType = null
-                if (playing) voice(currentType).envelope.noteOn()
+                if (playing) noteOn(voice(currentType))
             } else {
-                voice(currentType).envelope.noteOff()
+                noteOff(voice(currentType))
             }
         } else if (pendingType != null) {
             // The user switched back to the active type before its release finished.
             pendingType = null
-            if (playing) voice(currentType).envelope.noteOn()
+            if (playing) noteOn(voice(currentType))
         }
 
         val pending = pendingType ?: return
         if (voice(currentType).envelope.isSilent) {
             switchTo(pending)
             pendingType = null
-            if (playing) voice(currentType).envelope.noteOn()
+            if (playing) noteOn(voice(currentType))
         }
     }
 
@@ -234,6 +282,7 @@ class HornRenderer(
         next.reset()
         currentType = type
         next.synthesizer.setExpression(currentExpression())
+        gainSmoother.setCurrent(currentGain(outputMode.get()))
     }
 
     private fun applyPendingCustomProfile() {
@@ -249,10 +298,6 @@ class HornRenderer(
     private fun voice(type: HornType): HornVoice = voices[type.ordinal]
 
     private companion object {
-        const val PROTECTION_GAIN = 0.501f
-        const val REVERB_LIMITER_DRIVE = 1.0
-        const val HARD_CEILING = 0.98
-        val PCM_MAX = (HARD_CEILING * Short.MAX_VALUE).roundToInt()
-        val PCM_MIN = -PCM_MAX
+        const val GAIN_SMOOTHING_MILLIS = 20f
     }
 }

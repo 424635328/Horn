@@ -1,7 +1,9 @@
 package com.industrial.horn.audio.dsp
 
 import kotlin.math.cos
+import kotlin.math.pow
 import kotlin.math.sin
+import kotlin.math.sqrt
 
 /**
  * Direct-form-II transposed biquad. Used for the train air band, the e-bike high-pass/band
@@ -79,6 +81,48 @@ internal class BiquadFilter private constructor(
                 a1 = -2.0 * cosW,
                 a2 = 1.0 - alpha,
             ).normalizedBy(1.0 + alpha)
+        }
+
+        /** RBJ high-frequency shelf, used for the headphone ILD tilt (03 §2.2 coefficient form). */
+        fun highShelf(
+            sampleRate: Int,
+            cutoffHz: Double,
+            q: Double,
+            gainDb: Double,
+        ): BiquadFilter {
+            val coefficients = coefficients(sampleRate, cutoffHz, q)
+            val cosW = coefficients.cosine
+            val alpha = coefficients.alpha
+            val a = 10.0.pow(gainDb / 40.0)
+            val rootA = sqrt(a)
+            val a0 = (a + 1.0) - (a - 1.0) * cosW + 2.0 * rootA * alpha
+            return BiquadFilter(
+                b0 = a * ((a + 1.0) + (a - 1.0) * cosW + 2.0 * rootA * alpha),
+                b1 = -2.0 * a * ((a - 1.0) + (a + 1.0) * cosW),
+                b2 = a * ((a + 1.0) + (a - 1.0) * cosW - 2.0 * rootA * alpha),
+                a1 = 2.0 * ((a - 1.0) - (a + 1.0) * cosW),
+                a2 = (a + 1.0) - (a - 1.0) * cosW - 2.0 * rootA * alpha,
+            ).normalizedBy(a0)
+        }
+
+        /** RBJ peaking EQ, used for the throat formant group (01 §2.2.2 coefficient form). */
+        fun peak(
+            sampleRate: Int,
+            centerHz: Double,
+            q: Double,
+            gainDb: Double,
+        ): BiquadFilter {
+            val coefficients = coefficients(sampleRate, centerHz, q)
+            val cosW = coefficients.cosine
+            val alpha = coefficients.alpha
+            val a = 10.0.pow(gainDb / 40.0)
+            return BiquadFilter(
+                b0 = 1.0 + alpha * a,
+                b1 = -2.0 * cosW,
+                b2 = 1.0 - alpha * a,
+                a1 = -2.0 * cosW,
+                a2 = 1.0 - alpha,
+            ).normalizedBy(1.0 + alpha / a)
         }
 
         private fun coefficients(

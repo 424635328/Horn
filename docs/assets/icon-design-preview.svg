@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="420" viewBox="0 0 1080 420">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="39%" r="72%">
+      <stop offset="0%" stop-color="#27333F"/>
+      <stop offset="55%" stop-color="#16202A"/>
+      <stop offset="100%" stop-color="#0B1116"/>
+    </radialGradient>
+    <linearGradient id="metal" x1="0" y1="35%" x2="0" y2="65%">
+      <stop offset="0%" stop-color="#F4F8FB"/>
+      <stop offset="55%" stop-color="#AEBDC9"/>
+      <stop offset="100%" stop-color="#5E6D79"/>
+    </linearGradient>
+    <linearGradient id="metal2" x1="0" y1="43%" x2="0" y2="57%">
+      <stop offset="0%" stop-color="#DCE4EA"/>
+      <stop offset="100%" stop-color="#5F6E7A"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Panel 1: squircle adaptive icon -->
+  <g transform="translate(60,60)">
+    <rect width="300" height="300" rx="72" fill="url(#bg)"/>
+    <g transform="scale(2.7778)">
+      <path d="M32,47 h8 a4,4 0 0 1 4,4 v6 a4,4 0 0 1 -4,4 h-8 a4,4 0 0 1 -4,-4 v-6 a4,4 0 0 1 4,-4 z" fill="url(#metal2)"/>
+      <path d="M42,48 C52,45 58,41 66,38 L66,70 C58,67 52,63 42,60 Z" fill="url(#metal)"/>
+      <path d="M45,50 C53,47 59,43.5 63.5,41" stroke="#FFFFFF" stroke-opacity="0.4" stroke-width="2" stroke-linecap="round" fill="none"/>
+      <path d="M66,38 C70,45 70,63 66,70" stroke="#FFB547" stroke-width="3.2" stroke-linecap="round" fill="none"/>
+      <path d="M70,42 C73,47 73,61 70,66" stroke="#FFB547" stroke-width="2.6" stroke-linecap="round" fill="none"/>
+      <path d="M75.5,38 C79.5,45 79.5,63 75.5,70" stroke="#FFB547" stroke-opacity="0.7" stroke-width="2.4" stroke-linecap="round" fill="none"/>
+      <path d="M81,36 C85,44 85,64 81,72" stroke="#FFB547" stroke-opacity="0.4" stroke-width="2.2" stroke-linecap="round" fill="none"/>
+    </g>
+    <text x="150" y="345" text-anchor="middle" fill="#8A98A5" font-family="sans-serif" font-size="20">Adaptive icon</text>
+  </g>
+
+  <!-- Panel 2: circle mask -->
+  <g transform="translate(390,60)">
+    <clipPath id="circ"><circle cx="150" cy="150" r="150"/></clipPath>
+    <g clip-path="url(#circ)">
+      <rect width="300" height="300" fill="url(#bg)"/>
+      <g transform="scale(2.7778)">
+        <path d="M32,47 h8 a4,4 0 0 1 4,4 v6 a4,4 0 0 1 -4,4 h-8 a4,4 0 0 1 -4,-4 v-6 a4,4 0 0 1 4,-4 z" fill="url(#metal2)"/>
+        <path d="M42,48 C52,45 58,41 66,38 L66,70 C58,67 52,63 42,60 Z" fill="url(#metal)"/>
+        <path d="M66,38 C70,45 70,63 66,70" stroke="#FFB547" stroke-width="3.2" stroke-linecap="round" fill="none"/>
+        <path d="M70,42 C73,47 73,61 70,66" stroke="#FFB547" stroke-width="2.6" stroke-linecap="round" fill="none"/>
+        <path d="M75.5,38 C79.5,45 79.5,63 75.5,70" stroke="#FFB547" stroke-opacity="0.7" stroke-width="2.4" stroke-linecap="round" fill="none"/>
+        <path d="M81,36 C85,44 85,64 81,72" stroke="#FFB547" stroke-opacity="0.4" stroke-width="2.2" stroke-linecap="round" fill="none"/>
+      </g>
+    </g>
+    <text x="150" y="345" text-anchor="middle" fill="#8A98A5" font-family="sans-serif" font-size="20">Round mask</text>
+  </g>
+
+  <!-- Panel 3: monochrome themed icon -->
+  <g transform="translate(720,60)">
+    <rect width="300" height="300" rx="72" fill="#20262C"/>
+    <g transform="scale(2.7778)">
+      <path d="M32,47 h8 a4,4 0 0 1 4,4 v6 a4,4 0 0 1 -4,4 h-8 a4,4 0 0 1 -4,-4 v-6 a4,4 0 0 1 4,-4 z" fill="#FFFFFF"/>
+      <path d="M42,48 C52,45 58,41 66,38 L66,70 C58,67 52,63 42,60 Z" fill="#FFFFFF"/>
+      <path d="M70,42 C73,47 73,61 70,66" stroke="#FFFFFF" stroke-width="2.8" stroke-linecap="round" fill="none"/>
+      <path d="M77,38 C81,45 81,63 77,70" stroke="#FFFFFF" stroke-width="2.6" stroke-linecap="round" fill="none"/>
+    </g>
+    <text x="150" y="345" text-anchor="middle" fill="#8A98A5" font-family="sans-serif" font-size="20">Monochrome (themed)</text>
+  </g>
+</svg>

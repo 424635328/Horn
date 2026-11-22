@@ -32,11 +32,11 @@ class TrainHornSynthTest {
         val first = DspMeasurement.renderRaw(HornType.TRAIN, seconds = 1.5)
         val synth = TrainHornSynth(DspMeasurement.SAMPLE_RATE)
         synth.reset()
-        val second = FloatArray(first.size)
-        synth.render(second, second.size)
+        val secondStereo = FloatArray(2 * first.size)
+        synth.render(secondStereo, first.size)
 
-        assertArrayEquals(first, second, 0f)
-        assertTrue(second.all { it.isFinite() })
-        assertTrue(DspMeasurement.peak(second) <= 0.95)
+        assertTrue(secondStereo.all { it.isFinite() })
+        assertTrue(DspMeasurement.peak(secondStereo) <= 0.95)
+        assertArrayEquals(first, DspMeasurement.monoFold(secondStereo, first.size), 0f)
     }
 }

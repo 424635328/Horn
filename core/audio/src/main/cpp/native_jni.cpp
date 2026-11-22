@@ -2,6 +2,8 @@
 
 #include <jni.h>
 
+#include <algorithm>
+
 namespace {
 NativeHornEngine* engine(jlong handle) {
     return reinterpret_cast<NativeHornEngine*>(handle);
@@ -77,6 +79,13 @@ Java_com_industrial_horn_audio_OboeHornAudioEngine_nativeSetProtection(JNIEnv*, 
 }
 
 extern "C" JNIEXPORT void JNICALL
+Java_com_industrial_horn_audio_OboeHornAudioEngine_nativeSetOutputMode(JNIEnv*, jobject,
+                                                                          jlong handle,
+                                                                          jint mode) {
+    if (handle != 0) engine(handle)->setOutputMode(mode);
+}
+
+extern "C" JNIEXPORT void JNICALL
 Java_com_industrial_horn_audio_OboeHornAudioEngine_nativeSetCustomProfile(
     JNIEnv*, jobject, jlong handle, jfloat primary, jfloat ratio, jboolean dual,
     jfloat richness, jfloat attackMs, jfloat releaseMs, jfloat saturation) {
@@ -91,11 +100,13 @@ Java_com_industrial_horn_audio_OboeHornAudioEngine_nativeReadTelemetry(
     JNIEnv* env, jobject, jlong handle, jfloatArray destination) {
     if (handle == 0 || destination == nullptr) return 0;
     const jsize length = env->GetArrayLength(destination);
-    if (length < 6) return 0;
-    float values[6] = {};
-    engine(handle)->readTelemetry(values, 6);
-    env->SetFloatArrayRegion(destination, 0, 6, values);
-    return 6;
+    if (length < 9) return 0;
+    float values[9] = {};
+    const int written = engine(handle)->readTelemetry(values, 9);
+    if (written > 0) {
+        env->SetFloatArrayRegion(destination, 0, written, values);
+    }
+    return written;
 }
 
 extern "C" JNIEXPORT jint JNICALL
@@ -108,5 +119,26 @@ Java_com_industrial_horn_audio_OboeHornAudioEngine_nativeReadWaveform(
     if (values == nullptr) return 0;
     const int written = engine(handle)->readWaveform(values, length);
     env->ReleaseFloatArrayElements(destination, values, 0);
+    return written;
+}
+
+extern "C" JNIEXPORT jint JNICALL
+Java_com_industrial_horn_audio_OboeHornAudioEngine_nativeReadWaveformStereo(
+    JNIEnv* env, jobject, jlong handle, jfloatArray left, jfloatArray right) {
+    if (handle == 0 || left == nullptr || right == nullptr) return 0;
+    const jsize leftLength = env->GetArrayLength(left);
+    const jsize rightLength = env->GetArrayLength(right);
+    const int capacity = static_cast<int>(std::min(leftLength, rightLength));
+    if (capacity <= 0) return 0;
+    float* leftValues = env->GetFloatArrayElements(left, nullptr);
+    if (leftValues == nullptr) return 0;
+    float* rightValues = env->GetFloatArrayElements(right, nullptr);
+    if (rightValues == nullptr) {
+        env->ReleaseFloatArrayElements(left, leftValues, JNI_ABORT);
+        return 0;
+    }
+    const int written = engine(handle)->readWaveformStereo(leftValues, rightValues, capacity);
+    env->ReleaseFloatArrayElements(left, leftValues, 0);
+    env->ReleaseFloatArrayElements(right, rightValues, 0);
     return written;
 }

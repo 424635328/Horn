@@ -12,6 +12,7 @@ fun DebugAudioOverlayHost(
     telemetry: AudioTelemetry,
     readWaveform: (FloatArray) -> Int,
     modifier: Modifier = Modifier,
+    readWaveformStereo: (FloatArray, FloatArray) -> Int = { _, _ -> 0 },
 ) {
     // Intentionally empty: debug instrumentation must not ship.
 }

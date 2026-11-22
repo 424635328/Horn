@@ -6,6 +6,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.util.Collections
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 
 class HornRendererTest {
@@ -185,19 +186,25 @@ class HornRendererTest {
         val failure = AtomicReference<Throwable?>(null)
         val observedTypes = Collections.synchronizedSet(mutableSetOf<HornType>())
         val startGate = CountDownLatch(1)
+        val audioDone = AtomicBoolean(false)
         val requesters =
             (0 until 4).map { requesterIndex ->
                 Thread({
                     try {
                         startGate.await()
-                        repeat(3_000) { iteration ->
+                        var iteration = 0
+                        // Keep publishing type requests for the whole audio phase (plus the
+                        // original 3,000-iteration load floor) so the audio thread always
+                        // observes concurrent switching pressure.
+                        while (iteration < 3_000 || !audioDone.get()) {
                             val type = HornType.entries[(iteration + requesterIndex) % HornType.entries.size]
                             renderer.requestType(type)
+                            iteration++
                         }
                     } catch (throwable: Throwable) {
                         failure.compareAndSet(null, throwable)
                     }
-                }, "type-requester-$requesterIndex")
+                }, "type-requester-$requesterIndex").apply { isDaemon = true }
             }
         val audioThread =
             Thread({
@@ -206,13 +213,16 @@ class HornRendererTest {
                     repeat(3_000) {
                         val frames = renderer.renderBlock()
                         observedTypes.add(renderer.activeType)
-                        for (index in 0 until frames) {
-                            if (renderer.outputBuffer[index] == Short.MIN_VALUE) {
-                                error("PCM underflow at $index")
+                        for (index in 0 until 2 * frames) {
+                            val sample = renderer.outputBuffer[index]
+                            if (!sample.isFinite() || kotlin.math.abs(sample) > 0.981f) {
+                                error("Output escaped bounds at $index: $sample")
                             }
                         }
                     }
+                    audioDone.set(true)
                 } catch (throwable: Throwable) {
+                    audioDone.set(true)
                     failure.compareAndSet(null, throwable)
                 }
             }, "audio-thread")
@@ -254,14 +264,14 @@ class HornRendererTest {
         renderer: HornRenderer,
         blocks: Int,
     ): FloatArray {
-        val output = FloatArray(blocks * DspMeasurement.FRAMES_PER_BLOCK)
+        val stereo = FloatArray(2 * blocks * DspMeasurement.FRAMES_PER_BLOCK)
         for (block in 0 until blocks) {
             val frames = renderer.renderBlock()
-            for (index in 0 until frames) {
-                output[block * DspMeasurement.FRAMES_PER_BLOCK + index] =
-                    renderer.outputBuffer[index] / 32_768f
+            for (index in 0 until 2 * frames) {
+                stereo[block * 2 * DspMeasurement.FRAMES_PER_BLOCK + index] =
+                    renderer.outputBuffer[index]
             }
         }
-        return output
+        return DspMeasurement.monoFold(stereo, blocks * DspMeasurement.FRAMES_PER_BLOCK)
     }
 }

@@ -222,6 +222,7 @@ fun AcousticSpace.displayName(): String =
             AcousticSpace.STREET -> R.string.acoustic_space_street
             AcousticSpace.TUNNEL -> R.string.acoustic_space_tunnel
             AcousticSpace.OPEN_ROAD -> R.string.acoustic_space_open_road
+            AcousticSpace.GARAGE -> R.string.acoustic_space_garage
         },
     )
 
@@ -232,6 +233,7 @@ fun AcousticSpace.accessibilityName(): String =
             AcousticSpace.STREET -> R.string.acoustic_space_street_description
             AcousticSpace.TUNNEL -> R.string.acoustic_space_tunnel_description
             AcousticSpace.OPEN_ROAD -> R.string.acoustic_space_open_road_description
+            AcousticSpace.GARAGE -> R.string.acoustic_space_garage_description
         },
     )
 
