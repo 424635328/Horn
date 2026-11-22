@@ -43,6 +43,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalInspectionMode
@@ -62,13 +63,14 @@ import com.industrial.horn.presentation.HornFailure
 import com.industrial.horn.presentation.HornStatus
 import com.industrial.horn.presentation.HornUiState
 import com.industrial.horn.ui.theme.AmbientMeshBackground
-import com.industrial.horn.ui.theme.AmbientMeshSpec
 import com.industrial.horn.ui.theme.AmbientPalettes
 import com.industrial.horn.ui.theme.AppleGlassSurface
 import com.industrial.horn.ui.theme.AppleRadii
 import com.industrial.horn.ui.theme.AudioAura
 import com.industrial.horn.ui.theme.DynamicPillBanner
 import com.industrial.horn.ui.theme.HornTheme
+import com.industrial.horn.ui.theme.drawAmbientMesh
+import com.industrial.horn.ui.theme.rememberAmbientMeshSpec
 import kotlin.math.min
 
 /**
@@ -130,6 +132,41 @@ fun HornScreen(
     var expression by remember { mutableFloatStateOf(0f) }
     var showLab by rememberSaveable { mutableStateOf(false) }
 
+    // Stable callback identities: a parent recomposition (e.g. telemetry ticks) must not
+    // invalidate the heavy visual subtree through fresh lambda instances. Every wrapper reads
+    // its target through rememberUpdatedState, so behavior stays live while identity stays put.
+    val currentState by rememberUpdatedState(state)
+    val currentOnPressStart by rememberUpdatedState(onPressStart)
+    val currentOnPressEnd by rememberUpdatedState(onPressEnd)
+    val currentOnPressCancel by rememberUpdatedState(onPressCancel)
+    val currentOnExpressionChanged by rememberUpdatedState(onExpressionChanged)
+    val currentOnSelectHorn by rememberUpdatedState(onSelectHorn)
+    val pressStart = remember { { currentOnPressStart() } }
+    val pressEnd = remember { { currentOnPressEnd() } }
+    val pressCancel = remember { { currentOnPressCancel() } }
+    val changeExpression =
+        remember {
+            { value: Float ->
+                expression = value
+                currentOnExpressionChanged(value)
+            }
+        }
+    val selectHorn =
+        remember<(HornType) -> Unit> {
+            { type ->
+                expression = 0f
+                if (type == HornType.CUSTOM) {
+                    if (currentState.preferencesLoaded) {
+                        currentOnSelectHorn(type)
+                        showLab = true
+                    }
+                } else {
+                    currentOnSelectHorn(type)
+                    showLab = false
+                }
+            }
+        }
+
     // Deferred-read providers: RMS and expression updates redraw only, never recompose.
     val rmsState = rememberUpdatedState(telemetry.rms)
     val expressionState = rememberUpdatedState(expression)
@@ -148,35 +185,23 @@ fun HornScreen(
         val lowHeight = maxHeight < 620.dp
         val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
 
+        val meshSpec =
+            rememberAmbientMeshSpec(
+                palette = AmbientPalettes.of(selectedHorn.ambientKey()),
+                dark = dark,
+                rmsProvider = rmsProvider,
+                honking = isHonking,
+            )
         AmbientMeshBackground(
-            spec =
-                AmbientMeshSpec(
-                    palette = AmbientPalettes.of(selectedHorn.ambientKey()),
-                    dark = dark,
-                    phaseProvider = { 0f },
-                    rmsProvider = rmsProvider,
-                    honking = isHonking,
-                ),
+            spec = meshSpec,
             modifier = Modifier.fillMaxSize(),
         )
-
-        val selectHorn: (HornType) -> Unit = { type ->
-            expression = 0f
-            if (type == HornType.CUSTOM) {
-                if (state.preferencesLoaded) {
-                    onSelectHorn(type)
-                    showLab = true
-                }
-            } else {
-                onSelectHorn(type)
-                showLab = false
+        // Shared by the glass panels: re-draws the exact mesh layer behind each panel so the
+        // RenderEffect blur is a true backdrop blur instead of a self-blur.
+        val glassBackdrop: DrawScope.(Offset) -> Unit =
+            remember(meshSpec) {
+                { origin -> drawAmbientMesh(meshSpec, origin) }
             }
-        }
-
-        val changeExpression: (Float) -> Unit = { value ->
-            expression = value
-            onExpressionChanged(value)
-        }
 
         if (expanded) {
             Row(
@@ -205,6 +230,7 @@ fun HornScreen(
                         onSelectHorn = selectHorn,
                         onSelectSpace = onSelectSpace,
                         onVolumeTriggerChanged = onVolumeTriggerChanged,
+                        backdrop = glassBackdrop,
                     )
                     Spacer(modifier = Modifier.weight(1f))
                     Footer(
@@ -222,9 +248,9 @@ fun HornScreen(
                     buttonDescription = buttonDescription,
                     buttonStateDescription = buttonStateDescription,
                     buttonLabel = buttonLabel,
-                    onPressStart = onPressStart,
-                    onPressEnd = onPressEnd,
-                    onPressCancel = onPressCancel,
+                    onPressStart = pressStart,
+                    onPressEnd = pressEnd,
+                    onPressCancel = pressCancel,
                     onExpressionChanged = changeExpression,
                     modifier =
                         Modifier
@@ -260,9 +286,9 @@ fun HornScreen(
                     buttonDescription = buttonDescription,
                     buttonStateDescription = buttonStateDescription,
                     buttonLabel = buttonLabel,
-                    onPressStart = onPressStart,
-                    onPressEnd = onPressEnd,
-                    onPressCancel = onPressCancel,
+                    onPressStart = pressStart,
+                    onPressEnd = pressEnd,
+                    onPressCancel = pressCancel,
                     onExpressionChanged = changeExpression,
                     modifier =
                         Modifier
@@ -275,6 +301,7 @@ fun HornScreen(
                     onSelectHorn = selectHorn,
                     onSelectSpace = onSelectSpace,
                     onVolumeTriggerChanged = onVolumeTriggerChanged,
+                    backdrop = glassBackdrop,
                     modifier =
                         Modifier
                             .fillMaxWidth()
@@ -292,6 +319,7 @@ fun HornScreen(
         DynamicPillBanner(
             visible = true,
             accent = accent,
+            backdrop = glassBackdrop,
             modifier =
                 Modifier
                     .align(Alignment.TopCenter)
@@ -358,8 +386,8 @@ fun HornScreen(
                 profile = state.customProfile,
                 accent = accent,
                 onProfileChange = onCustomProfileChanged,
-                onPreviewStart = onPressStart,
-                onPreviewEnd = onPressEnd,
+                onPreviewStart = pressStart,
+                onPreviewEnd = pressEnd,
                 onSave = onCustomProfileSaved,
                 onReset = onCustomProfileReset,
                 onDismiss = {
@@ -393,6 +421,7 @@ private fun GlassConsole(
     onSelectSpace: (AcousticSpace) -> Unit,
     onVolumeTriggerChanged: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
+    backdrop: (DrawScope.(Offset) -> Unit)? = null,
 ) {
     AppleGlassSurface(
         modifier = modifier.widthIn(max = 460.dp),
@@ -400,6 +429,7 @@ private fun GlassConsole(
         rimAccent = accent,
         frostAlpha = 0.08f,
         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
+        backdrop = backdrop,
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             HornTypeSelector(

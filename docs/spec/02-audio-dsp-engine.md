@@ -260,7 +260,7 @@ C++ 镜像差异（MUST 知悉，详见 §8）：48 kHz 梳状延迟为 1215 / 1
 flowchart LR
     RT["音频线程<br/>renderBlock / onAudioReady"]
     BUF["AudioTelemetryBuffer<br/>原子槽位 + 256 采样波形环"]
-    VM["HornViewModel<br/>50ms 轮询 telemetrySnapshot"]
+    VM["HornViewModel<br/>自适应轮询 telemetrySnapshot"]
     UI["UI 遥测 / Debug 示波器"]
 
     RT -->|"update / pushWaveform"| BUF
@@ -268,7 +268,10 @@ flowchart LR
     VM --> UI
 ```
 
-消费约束：`HornViewModel` 仅在 `onHostResume` 后以 `TELEMETRY_INTERVAL_MS = 50L` 轮询；
+消费约束：`HornViewModel` 仅在 `onHostResume` 后轮询，且间隔自适应——鸣笛时
+`TELEMETRY_INTERVAL_ACTIVE_MS = 50L`（20Hz 实时反馈），空闲时 `TELEMETRY_INTERVAL_IDLE_MS = 500L`
+（数值静态，避免无谓唤醒耗电）；策略为纯函数 `telemetryIntervalMs(isHonking)` 并有单测锁定
+（`HornViewModelTest.telemetryPollingIsTightWhileHonkingAndRelaxedWhileIdle`）。
 Debug 示波器经 `readWaveform` 读真实波形环，编译期隔离于 `src/debug`
 （`feature/horn/src/debug/java/com/industrial/horn/ui/DebugAudioOverlay.kt`，见 ADR-0005）。
 

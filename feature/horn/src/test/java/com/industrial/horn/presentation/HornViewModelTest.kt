@@ -433,6 +433,24 @@ class HornViewModelTest {
             assertEquals(0f, session.expressions.last(), 0f)
         }
 
+    @Test
+    fun telemetryPollingIsTightWhileHonkingAndRelaxedWhileIdle() {
+        assertEquals(
+            "Honking needs a tight 20 Hz feedback cadence",
+            HornViewModel.TELEMETRY_INTERVAL_ACTIVE_MS,
+            HornViewModel.telemetryIntervalMs(isHonking = true),
+        )
+        assertEquals(
+            "Idle telemetry is static and must not burn battery",
+            HornViewModel.TELEMETRY_INTERVAL_IDLE_MS,
+            HornViewModel.telemetryIntervalMs(isHonking = false),
+        )
+        assertTrue(
+            "Idle interval must be at least 5x slower than the active one",
+            HornViewModel.telemetryIntervalMs(false) >= 5 * HornViewModel.telemetryIntervalMs(true),
+        )
+    }
+
     private class FakeHornSession(
         var startResult: HornStartResult = HornStartResult.GRANTED,
         var startException: RuntimeException? = null,

@@ -35,9 +35,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
@@ -293,6 +295,7 @@ fun DynamicPillBanner(
     visible: Boolean,
     accent: Color,
     modifier: Modifier = Modifier,
+    backdrop: (DrawScope.(Offset) -> Unit)? = null,
     content: @Composable RowScope.() -> Unit,
 ) {
     if (!visible) return
@@ -306,6 +309,7 @@ fun DynamicPillBanner(
             rimAccent = accent,
             frostAlpha = 0.12f,
             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+            backdrop = backdrop,
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,

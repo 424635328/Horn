@@ -11,6 +11,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.State
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -25,7 +26,11 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlin.math.cos
 import kotlin.math.min
+import kotlin.math.roundToInt
 import kotlin.math.sin
+
+/** Quantization steps for the breathing phase over one 26 s cycle (~18.75 redraws per second). */
+private const val PHASE_STEPS = 480f
 
 /**
  * Shared parameters for the breathing ambient mesh. Providers are read lazily inside draw
@@ -123,14 +128,22 @@ fun DrawScope.drawAmbientMesh(
 }
 
 /**
- * Breathing ambient mesh background. The infinite phase animation is lifecycle aware: it stops
- * when the host leaves the STARTED state, so background rendering never burns battery.
+ * Builds a live [AmbientMeshSpec] shared by the full-screen background and any glass panel
+ * backdrop copies, so both layers always agree on palette and breathing phase.
+ *
+ * The infinite phase animation is lifecycle aware: it stops when the host leaves the STARTED
+ * state, so background rendering never burns battery. The phase is quantized through
+ * [derivedStateOf]: draw invalidation then fires only on step boundaries (~18.75 effective fps
+ * instead of the display's 60/120 Hz) while staying a pure function of the animation clock for
+ * Roborazzi determinism.
  */
 @Composable
-fun AmbientMeshBackground(
-    spec: AmbientMeshSpec,
-    modifier: Modifier = Modifier,
-) {
+fun rememberAmbientMeshSpec(
+    palette: AmbientPalette,
+    dark: Boolean,
+    rmsProvider: () -> Float,
+    honking: Boolean,
+): AmbientMeshSpec {
     val lifecycleOwner = LocalLifecycleOwner.current
     val resumed = remember { mutableStateOf(true) }
     DisposableEffect(lifecycleOwner) {
@@ -165,10 +178,26 @@ fun AmbientMeshBackground(
         } else {
             remember { mutableStateOf(0.15f) }
         }
-
-    val animatedSpec =
-        remember(spec, phaseState) {
-            spec.copy(phaseProvider = { phaseState.value })
+    val quantizedPhase =
+        remember(phaseState) {
+            derivedStateOf { (phaseState.value * PHASE_STEPS).roundToInt() }
         }
-    Canvas(modifier = modifier) { drawAmbientMesh(animatedSpec) }
+    return remember(palette, dark, honking, phaseState) {
+        AmbientMeshSpec(
+            palette = palette,
+            dark = dark,
+            phaseProvider = { quantizedPhase.value / PHASE_STEPS },
+            rmsProvider = rmsProvider,
+            honking = honking,
+        )
+    }
+}
+
+/** Renders the breathing ambient mesh field behind everything else. */
+@Composable
+fun AmbientMeshBackground(
+    spec: AmbientMeshSpec,
+    modifier: Modifier = Modifier,
+) {
+    Canvas(modifier = modifier) { drawAmbientMesh(spec) }
 }

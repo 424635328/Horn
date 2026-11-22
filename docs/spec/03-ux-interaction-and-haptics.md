@@ -125,6 +125,9 @@ stateDiagram-v2
 
 - 三球轨道光斑（26s 周期慢速漂移）+ 网格 + 同心参考环；鸣笛 RMS 包络驱动光斑半径膨胀（压力系数
   `1 + 0.45 × rms`）透射过玻璃面板。
+- **相位帧率治理**：呼吸相位 MUST 经 `derivedStateOf` 量化（`PHASE_STEPS = 480`，约 18.75 次有效重绘/秒），
+  使全屏重绘不随 60/120Hz 屏幕刷新率空转；量化值是动画时钟的纯函数，Roborazzi 确定性不受影响。
+  `rememberAmbientMeshSpec` 产出的 spec MUST 同时供全屏背景与各玻璃面板虚化层共用，保证两层相位一致。
 - **生命周期契约**：`ON_STOP`/不可见 MUST 停播无限动画（`resumed` 标志门控 `rememberInfiniteTransition`），
   息屏/后台零功耗。
 - **无障碍**：`LocalReducedMotion == true` 时禁用呼吸动画，保留静态构图。
@@ -182,8 +185,12 @@ stateDiagram-v2
 
 - RMS 包络、Expression 位移、环境光相位、按钮按压缩放 MUST 经 `() -> Float` Provider 或
   `State` 在 `drawWithCache`/`drawBehind`/`graphicsLayer` 内读取；MUST NOT 在高频更新时触发重组。
-- 环境光动画值经 `rememberInfiniteTransition` 的 `State<Float>` 直接供 draw 层消费（禁在组合层解包）。
+- 环境光动画值经 `rememberInfiniteTransition` 的 `State<Float>` 直接供 draw 层消费（禁在组合层解包），
+  并经 `derivedStateOf` 量化封顶重绘频率（见 §5.6）。
 - `rememberUpdatedState` 用于保持 Provider 新鲜而稳定（`HornScreen` 的 `rmsProvider`/`expressionProvider`）。
+- **稳定回调身份**：`HornScreen` 传入深层子树（`HornHero`/`GlassConsole` 等）的回调 MUST 以
+  `remember { { currentTarget() } }` 包装（目标经 `rememberUpdatedState` 转发），使父级重组
+  （如遥测节拍）不会因 lambda 身份变化击穿子树的可跳过性（skippability）。
 
 ## 9. 非目标（Non-Goals）
 

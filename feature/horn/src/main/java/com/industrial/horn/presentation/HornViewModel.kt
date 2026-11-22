@@ -83,7 +83,11 @@ class HornViewModel(
         }
     }
 
-    /** Telemetry polling runs only while the host is visible; it is not a free-running timer. */
+    /**
+     * Telemetry polling runs only while the host is visible; it is not a free-running timer.
+     * The interval is adaptive: tight while honking (live RMS/latency feedback) and relaxed
+     * while idle (values are static, so frequent wakeups would only waste battery).
+     */
     fun onHostResume() {
         if (telemetryJob?.isActive == true) return
         telemetryJob =
@@ -92,7 +96,7 @@ class HornViewModel(
                     _telemetry.value =
                         runCatching { session.telemetrySnapshot() }
                             .getOrDefault(AudioTelemetry())
-                    delay(TELEMETRY_INTERVAL_MS)
+                    delay(telemetryIntervalMs(_uiState.value.isHonking))
                 }
             }
     }
@@ -300,7 +304,18 @@ class HornViewModel(
         }
     }
 
-    private companion object {
-        const val TELEMETRY_INTERVAL_MS = 50L
+    internal companion object {
+        /** Live feedback cadence while honking: 20 updates per second. */
+        const val TELEMETRY_INTERVAL_ACTIVE_MS = 50L
+
+        /** Idle cadence: values are static, so poll twice per second at most. */
+        const val TELEMETRY_INTERVAL_IDLE_MS = 500L
+
+        fun telemetryIntervalMs(isHonking: Boolean): Long =
+            if (isHonking) {
+                TELEMETRY_INTERVAL_ACTIVE_MS
+            } else {
+                TELEMETRY_INTERVAL_IDLE_MS
+            }
     }
 }
