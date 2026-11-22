@@ -43,8 +43,21 @@ jobs:
       - name: Full verification gate
         run: ./gradlew spotlessCheck detekt testDebugUnitTest
 
-      - name: Build release APKs
-        run: ./gradlew :app:assembleRelease :wear:assembleRelease
+      - name: Build release APKs (signed when secrets exist)
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          if [ "${{ steps.keystore.outputs.signed }}" = "true" ]; then
+            ./gradlew :app:assembleRelease :wear:assembleRelease \
+              -Pandroid.injected.signing.store.file="$RUNNER_TEMP/release.jks" \
+              -Pandroid.injected.signing.store.password="$KEYSTORE_PASSWORD" \
+              -Pandroid.injected.signing.key.alias="$KEY_ALIAS" \
+              -Pandroid.injected.signing.key.password="$KEY_PASSWORD"
+          else
+            ./gradlew :app:assembleRelease :wear:assembleRelease
+          fi
 
       - name: Decode keystore if secrets are configured
         id: keystore

@@ -1,158 +1,201 @@
-# Horn 2.0
+<div align="center">
 
-工业级、零外部音频素材的**四音色喇叭模拟器**：汽车、火车、电动车、摩托车。核心交互仍是中央超大圆形按钮的“按住发声、松手即停”，并新增车型声学策略、差异化触觉、声波视觉与 DataStore 偏好持久化。
-
-- 包名：`com.industrial.horn`
-- 版本：`2.0.0`（versionCode 2）
-- 技术栈：Kotlin 2.2.21 / Jetpack Compose（BOM 2025.06.01）/ Material 3 / DataStore Preferences 1.2.1
-- 构建：Gradle Kotlin DSL 8.13 + Version Catalog
-- SDK：`minSdk 26`，`compileSdk 36`，`targetSdk 36`
-- 项目路径：仓库根目录
-
-| 深色：Car | 浅色：Train |
-|---|---|
-| ![Horn dark theme](docs/horn-screen.png) | ![Horn light theme](docs/horn-screen-light.png) |
-
-## 1. 四音色声学设计
-
-| 音色 | DSP 结构 | 瞬态 | 校准增益 / 实测 RMS | 触觉签名 |
-|---|---|---|---|---|
-| Car 汽车 | 400 Hz + 500 Hz 双基频；8/7 次谐波；6 kHz 低通；5.5 Hz 微幅摇摆；确定性气噪 | 12 ms / 14 ms | 0.55 / 0.224 | 中强、平稳持续脉冲 |
-| Train 火车 | D#4 311.13 + F#4 369.99 + B4 493.88 三音和弦；每音 ±0.4% 双 Detune；155.56 / 123.47 Hz 低八度；80 Hz 高通 + 5.6 kHz 低通；1.8 kHz 带通气流噪声 | 65 ms / 185 ms，起音 -1.8% → 0 的 180 ms Pitch Bend | 0.52 / 0.183 | 最高 255 振幅、120 ms 低频重脉冲 |
-| E-Bike 电车 | 2740 + 2785 Hz 双脉冲发射器，叠加 685 Hz 琴体；500 Hz 高通 + 4.2 kHz 低通；带限脉冲谐波 | 4 ms / 6 ms | 0.18 / 0.080 | 轻量 7 ms 高频轻点 |
-| Motorcycle 摩托 | 444 Hz 单基频金属振膜；强奇偶次谐波；29 Hz / 18% 振幅颤动；190 Hz 高通 + 4.8 kHz 低通；tanh 2.0 饱和 | 8 ms / 10 ms | 0.33 / 0.227 | 18 ms 颗粒机械脉冲 |
-
-所有波形在构造期生成 2048 点归一化谐波 Wavetable，音频线程只做查表/滤波/包络，不分配内存。火车与摩托使用 RBJ Biquad，电车使用带限脉冲波，汽车保留 v1 的加法合成器并重新校准增益。
-
-**响度与防破音**：每个音色有独立 Makeup Gain；最终统一进入 `tanh` 软限幅器与 `[-0.98, 0.98]` 硬边界，再转换 PCM16（峰值钳位 ±32112）。E-Bike 的 RMS 明显低于 Car/Moto，是刻意的等响校准：2.7 kHz 附近人耳敏感度远高于 400–500 Hz，不能按相同 RMS 播放。
-
-## 2. 无锁音色切换
-
-`HornRenderer` 是纯 JVM 实时渲染器：
-
-- `requestType()` 只写 `AtomicReference<HornType>`，可从任意线程调用；
-- 当前波形、包络、滤波器状态只归音频线程所有；
-- 若在鸣笛中/AudioTrack 运行中切换类型，旧声部先走完 Release 包络并到达数字静音，随后重置新声部并 Attack，绝不把新波形直接换到非零样本上；
-- `HornVoice` 预创建四种实现，切换时零分配；
-- ViewModel 层还会先 `session.stop()`、将 UI 置为 Idle，再持久化选择，形成双层保证。
-
-## 3. 工程结构
-
-```text
-app/src/main/java/com/industrial/horn/
-├── audio/
-│   ├── HornType.kt                 # Car / Train / E-Bike / Motorcycle
-│   ├── HornVoice.kt                # 参数表、策略工厂、Makeup Gain
-│   ├── HornRenderer.kt             # 纯 JVM 原子切换/包络/声部管理
-│   ├── DualToneHornSynth.kt        # Car
-│   ├── TrainHornSynth.kt           # Train：和弦 + 低八度 + 气流 + Pitch Bend
-│   ├── EBikeHornSynth.kt           # E-Bike：2.7k 双脉冲 + 带通
-│   ├── MotorcycleHornSynth.kt      # Motorcycle：444Hz + 29Hz 颤动
-│   ├── AttackReleaseEnvelope.kt    # 1–250ms raised-cosine，按音色配置
-│   ├── PcmRenderer.kt              # 统一增益/软限幅/硬边界/PCM16
-│   ├── SynthAudioTrackEngine.kt    # LOW_LATENCY AudioTrack + 专用音频线程
-│   ├── AudioFocusManager.kt        # GAIN_TRANSIENT / abandon
-│   ├── HornSession.kt              # 会话接口与事件
-│   └── DefaultHornSession.kt       # 焦点 + 引擎 + 触觉 + noisy 广播
-│   └── dsp/                         # Wavetable / Biquad / Noise / Soft Saturate
-├── data/
-│   └── HornPreferencesRepository.kt # DataStore Preferences 抽象与实现
-├── haptic/
-│   ├── HapticPattern.kt             # 纯 Kotlin 四套可测试振动签名
-│   ├── HornHaptics.kt
-│   └── AndroidHornHaptics.kt        # VibratorManager/Vibrator 版本兼容
-├── presentation/
-│   ├── HornUiState.kt              # selectedHorn + Idle/Honking/Error + loaded
-│   └── HornViewModel.kt            # UDF、持久化恢复、安全切换、生命周期
-├── ui/
-│   ├── HornScreen.kt               # 四音色主题、动态声波、响应式布局
-│   ├── HornTypeSelector.kt         # Material 3 四档胶囊选择器
-│   ├── HornButton.kt               # 底层按住手势 + 圆形越界取消
-│   ├── HornVisuals.kt              # 每音色 Accent/Icon/WaveStyle
-│   └── theme/
-├── di/AppContainer.kt              # DataStore + Session 组合根
-├── HornApplication.kt
-└── MainActivity.kt
-```
-
-## 4. 持久化与 UDF
-
-- `HornPreferencesRepository` 基于 **Preferences DataStore**，文件 `horn_preferences.preferences_pb`；读写均在 IO 协程，主线程零阻塞。
-- ViewModel 启动时 `selectedHorn.first()` 只读取一次并恢复，避免稍后到达的旧 DataStore 值覆盖用户刚做的选择。
-- UI 在偏好加载完成前禁用选择器；`HornUiState` 始终包含 `selectedHorn: HornType`、`status` 与 `preferencesLoaded`。
-- 点击已选音色不重复写入；鸣笛中切换会先 `stop()` 旧声部、状态回 Idle，再异步写入新选择。
-
-## 5. 触觉签名
-
-`HapticPattern` 把时间序列与振幅从 Android API 中解耦，四种签名均为独立波形：
-
-- Car：190 振幅、24/12/9 ms 平稳脉冲；
-- Train：255 振幅、120/50/45/55 ms 低频重脉冲；
-- E-Bike：70 振幅、7/5/4/3 ms 快速轻点；
-- Motorcycle：150 振幅、18/10/8/6 ms 颗粒脉冲。
-
-无振幅控制设备使用各自的 `fallbackTimingsMs` 节奏降级；无马达设备直接空操作。
-
-## 6. 构建与验证
-
-```powershell
-cd <你的克隆目录>\Horn
-
-.\gradlew.bat :app:testDebugUnitTest
-.\gradlew.bat :app:lintDebug
-.\gradlew.bat :app:assembleDebug
-.\gradlew.bat :app:assembleRelease
-.\gradlew.bat :app:connectedDebugAndroidTest
-```
-
-本机结果（API 35 x86_64 AVD）：
-
-```text
-:app:testDebugUnitTest         BUILD SUCCESSFUL  (58 tests)
-:app:connectedDebugAndroidTest BUILD SUCCESSFUL  (7 tests)
-:app:lintDebug                 0 errors, 0 warnings (warningsAsErrors=true)
-:app:assembleDebug             BUILD SUCCESSFUL
-:app:assembleRelease           BUILD SUCCESSFUL  (R8 + shrinkResources)
-```
-
-产物：
-
-- Debug APK：`app/build/outputs/apk/debug/app-debug.apk`
-- Release（未签名）：`app/build/outputs/apk/release/app-release-unsigned.apk`
-- 单测报告：`app/build/reports/tests/testDebugUnitTest/index.html`
-- Lint：`app/build/reports/lint-results-debug.html`
-
-安装：
-
-```powershell
-adb install -r app\build\outputs\apk\debug\app-debug.apk
-adb shell am start -n com.industrial.horn/.MainActivity
-```
-
-## 7. 测试覆盖
-
-- **四音色 DSP**：`DualToneHornSynthTest`、`TrainHornSynthTest`、`EBikeHornSynthTest`、`MotorcycleHornSynthTest`、`HornSynthesizerContractTest`：NaN/Inf、峰值、RMS、双基频/和弦/低八度/2.7 kHz/444 Hz 频谱、AM 侧带、确定性、缓冲区边界。
-- **渲染器**：`HornRendererTest`：四音色响度带、切换先 Release、Train 长尾、Panic 清零、4 个线程并发请求 12,000 次音色切换。
-- **包络/极限**：`AttackReleaseEnvelopeTest`、`PcmRendererTest`：12/14、65/185、4/6、8/10 ms 包络、软限幅硬边界、PCM 不溢出。
-- **状态/持久化**：`HornViewModelTest`、`HornPreferencesRepositoryTest`：冷启动恢复、默认值、读写、鸣笛中切换、同音色去重、错误/生命周期、异步加载防覆盖。
-- **触觉/类型**：`HapticSignatureTest`、`HornTypeTest`：四套签名合法且差异明显、存储键回退。
-- **Compose UI**：`HornScreenTest` 7 项：四档渲染与选择、TalkBack contentDescription/selected、主按钮动态描述、按住/松手、滑出取消、深/浅色非黑屏截图。
-
-真实设备行为：选择 Train 后杀进程重启，UI 仍恢复 Train；按住 Train 时 AudioTrack 以 48 kHz / `USAGE_MEDIA` / `GAIN_TRANSIENT` 启动；按 HOME 后焦点 abandon、AudioTrack `paused`，进程存活且 crash buffer 为空。证据见 [`docs/VERIFICATION.md`](docs/VERIFICATION.md)。
-
-## 8. Android Studio 打开
-
-1. Android Studio → **Open** → 选择仓库根目录。
-2. 等待 Gradle Sync（Wrapper 8.13，JDK 21 可用）。
-3. 选择 `app` 运行配置，目标设备 API 26+。
-4. 首次运行不需要麦克风、存储或通知权限；仅声明普通权限 `VIBRATE`。
-
-## 9. 扩展新音色
-
-1. 在 `HornType` 增加枚举值并补齐存储键。
-2. 实现新的 `HornSynthesizer`。
-3. 在 `HornSynthesizerFactory` 注册，并在 `HornVoiceCatalog` 标定 Attack/Release/Makeup Gain。
-4. 在 `HornVisuals`、`HapticSignatures` 与中英文字符串补充对应表达。
-
-`HornAudioEngine` 接口保持不变，Oboe/WAV 后端仍可通过 `AppContainer` 替换。
 # Horn
+
+**一款为了在过马路时优雅反击，而动用了 C++ AAudio 低延迟引擎的工业级赛博喇叭。**
+
+[简体中文](README.md) · [English](README_EN.md)
+
+[![CI](https://github.com/424635328/Horn/actions/workflows/ci.yml/badge.svg)](https://github.com/424635328/Horn/actions/workflows/ci.yml)
+[![Kotlin](https://img.shields.io/badge/Kotlin-2.2.21-7F52FF?logo=kotlin&logoColor=white)](https://kotlinlang.org)
+[![Min SDK](https://img.shields.io/badge/Min%20SDK-26%2B-3DDC84?logo=android&logoColor=white)](https://developer.android.com)
+[![Target SDK](https://img.shields.io/badge/Target%20SDK-36-3DDC84?logo=android&logoColor=white)](https://developer.android.com)
+[![C++ Oboe](https://img.shields.io/badge/C%2B%2B%20Oboe-1.9.3-00599C?logo=cplusplus&logoColor=white)](https://github.com/google/oboe)
+[![Wear OS](https://img.shields.io/badge/Wear%20OS-remote%20honk-4285F4?logo=wearos&logoColor=white)](https://developer.android.com/wear)
+[![Jetpack Compose](https://img.shields.io/badge/Jetpack%20Compose-BOM%202025.06.01-4285F4)](https://developer.android.com/jetpack/compose)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+
+</div>
+
+---
+
+## 为什么要做这个 App？
+
+如果你在过马路时被其他车辆刺耳的喇叭声惊扰了，手里却手无寸铁、毫无反击之力——那么你肯定会对这款 App 感兴趣。
+
+- 面对不耐烦催促的小轿车？掏出手机，用经典双音蜗牛喇叭礼貌回敬；
+- 面对突然贴身狂按的电瓶车？当场切到**隧道回响模式**，拉响 311 Hz + 370 Hz + 494 Hz 美式重载火车三音气喇叭，完成声学维度的降维打击；
+- 甚至懒得掏手机？抬起 Wear OS 手表按一下，或者盲按口袋里的物理音量键，深藏功与名。
+
+本来只想写个 `Button` 放个 MP3，结果工程师强迫症发作，一不小心把它写成了带 C++ 音频内核、AGSL 着色器、80 张像素级视觉回归基准图和全自动 CI 的工业级项目。素材？不存在的。所有声音都是实时算出来的——就像真正的愤怒，应当即兴发生。
+
+## 战术反击装备库
+
+### 五大声学武器
+
+| 音色 | 声学构造（真实 DSP 参数） | 脾气点评 |
+|---|---|---|
+| 🚗 Car 汽车 | 400 Hz + 500 Hz 双基频，8/7 次谐波，6 kHz 低通，5.5 Hz 微幅摇摆，确定性气噪 | 城市通用语，礼貌而不失威严 |
+| 🚂 Train 火车 | D#4 311.13 + F#4 369.99 + B4 493.88 三音和弦，±0.4% 双 Detune，155.56 / 123.47 Hz 低八度，1.8 kHz 带通气流噪声 | 隧道模式一开，声学巨兽出笼 |
+| 🛵 E-Bike 电车 | 2740 + 2785 Hz 双脉冲发射器叠加 685 Hz 琴体，500 Hz 高通 + 4.2 kHz 低通 | 尖锐、清脆、穿透力极强的正义 |
+| 🏍️ Motorcycle 摩托 | 444 Hz 单基频金属振膜，29 Hz / 18% 振幅颤动，tanh 2.0 饱和 | 颗粒感机械脉冲，一听就是狠角色 |
+| 🎛️ Custom 自定义 | Pro Sound Lab：主频 150–3000 Hz、双音比例 0.5–2、谐波 0–1、起音 3–120 ms、尾音 5–250 ms、失真 0–1，DataStore 持久化 | 你的声音，你立法 |
+
+所有波形在构造期生成 2048 点归一化谐波 Wavetable；音频渲染线程只做查表 / 滤波 / 包络，**零内存分配、零锁、零日志**。响度按人耳敏感度做了等响校准（2.7 kHz 的电车不能跟 400 Hz 的汽车按相同 RMS 蛮干），最终统一进入 `tanh` 软限幅器与 `[-0.98, 0.98]` 硬边界。
+
+### 进阶物理手感
+
+| 能力 | 说明 |
+|---|---|
+| Expression 气压调制 | 按住按钮上下滑动，实时弯音 ±8%、饱和驱动 +35%、气流噪声 +60%，逐采样平滑，绝不咔哒 |
+| 三大声场 | 街道（干声为主）/ 隧道（长衰减回响，火车专用震撼）/ 旷野（远场预延迟）——Freeverb 拓扑：4 梳状 + 2 全通 + 预延迟 |
+| 差异化触觉指纹 | 火车 255 振幅 120 ms 重脉冲、摩托 18 ms 颗粒脉冲、电车 7 ms 轻点、汽车平稳持续 |
+| 物理音量键扳机 | 可选开关，开启后盲操鸣笛（ACTION_DOWN 起音 / ACTION_UP 止音），关闭即完全恢复系统音量行为 |
+
+### 反差级人文关怀
+
+- **零音量防尴尬**：按压时媒体音量为 0？顶部弹出内联胶囊提示，一键设为 60%，优雅不社死；
+- **护耳软限幅**：检测到耳机且音量 > 70%，自动下发 -6 dB 保护并亮起低调徽章——反击别人可以，但不能先震聋自己；
+- **防卡音生命周期**：退后台、来电、锁屏、音频焦点丢失、手势滑出按钮区，全部安全止音，绝不留下幽灵喇叭声。
+
+### 全平台生态
+
+- **Apple Glass 液态玻璃视觉体系**：三层玻璃面板（真实背景虚化 + 1.5% 微颗粒抗色带 + AGSL 镜面折射描边）、
+  五车型深浅双主题环境光色板、全套弹簧物理动效（Snappy / Fluid / TactileOrb / 橡皮筋）；
+  API 33+ AGSL → 31–32 `RenderEffect` 模糊 → 26–30 磨砂降级，探测失败绝不崩溃；
+- Android 13+ **AGSL `RuntimeShader`** 拟真金属光压涟漪，API 26–32 自动降级高质量 Canvas；
+- 横屏 / 平板 / 折叠屏 **WindowSizeClass 仪表盘**布局（左控制岛，右超大方向盘按钮）；
+- **Jetpack Glance 桌面微件**（1×1 / 2×2 自适应，礼貌双鸣 Bi-Bi）与**快捷设置磁贴**；
+- **Wear OS 手表远程引爆**：`MessageClient` 低延迟指令 `/horn/command`（START/STOP），手机端 `/horn/status` 回传状态，通信协议抽象可离线单测；
+- Debug 包专属 **DSP 实时示波器浮层**：真实消费音频环形缓冲区的 256 采样波形、实时延迟 / xrun / 单帧耗时（等宽数字 tnum），一键导出 Kotlin 调音常量——Release 包编译期零侵入剔除。
+
+## 真实界面预览
+
+> 以下均为 Roborazzi 无头渲染的真实基准图，不是设计师画的效果图——毕竟设计师已经跑了。
+
+| 深色 · Car · English | 浅色 · Train · 简体中文 |
+|:---:|:---:|
+| ![Car dark EN](docs/assets/showcase-car-dark-en.png) | ![Train light ZH](docs/assets/showcase-train-light-zh.png) |
+
+| 深色 · Custom 声学工坊 · 横屏大屏 | 浅色 · Moto · 1.35x 大字体 |
+|:---:|:---:|
+| ![Custom expanded dark](docs/assets/showcase-custom-expanded-dark.png) | ![Moto light font](docs/assets/showcase-moto-light-font135.png) |
+
+| 深色 · E-Bike · 简体中文 |
+|:---:|
+| ![E-Bike dark ZH](docs/assets/showcase-ebike-dark-zh.png) |
+
+## 技术架构揭秘（杀鸡用牛刀）
+
+> 完整系统规约、不变量清单与 MADR 架构决策记录见 [`docs/spec/`](docs/spec/README.md)。
+
+### 多模块拓扑
+
+```mermaid
+graph TD
+    BL["build-logic<br/>Convention Plugins"]
+    APP[":app<br/>Activity · Widget · Tile · Wear 服务"]
+    WEAR[":wear<br/>Wear OS 圆屏 App"]
+    FH[":feature:horn<br/>主界面 · ViewModel · 声学工坊"]
+    CA[":core:audio<br/>Oboe C++ · 零 GC 引擎 · DSP"]
+    CD[":core:data<br/>DataStore · Wear 协议"]
+    CH[":core:haptic<br/>触觉引擎"]
+    DS[":core:designsystem<br/>Apple Glass · 主题 · AGSL · 图标"]
+    BM[":benchmark<br/>DSP 性能断言"]
+    BP[":baselineprofile<br/>Baseline Profile 生成"]
+
+    BL -.-> APP & WEAR & FH & CA & CD & CH & DS & BM & BP
+    APP --> FH & CA & CD & CH & DS
+    FH --> CA & CD & CH & DS
+    CD --> CA
+    CH --> CA
+    WEAR --> CD
+    BM --> CA
+    BP --> APP
+```
+
+依赖方向严格单向：`:core:audio` 不知道 Compose 存在，`:feature:horn` 与 `:core:designsystem` 永远不碰 `android.media.*`——这不靠自觉，靠 Konsist 架构测试在每次 `testDebugUnitTest` 里机器执法。
+
+### 零 GC 实时音频与遥测数据流
+
+```mermaid
+flowchart LR
+    T1["屏幕按压/滑动手势"] --> V["HornViewModel<br/>单向数据流状态机"]
+    T2["物理音量键<br/>dispatchKeyEvent"] --> V
+    T3["Wear OS<br/>MessageClient"] --> V
+    V -->|"原子参数同步"| E{"引擎路由"}
+    E -->|"优先"| OB["C++ Oboe (AAudio)<br/>Exclusive · LowLatency · Float32"]
+    E -->|"无缝降级"| AT["零分配 AudioTrack<br/>JVM 兜底引擎"]
+    OB --> DSP["DSP 合成 → Expression 调制<br/>→ 空间混响 → 等响校准"]
+    AT --> DSP
+    DSP --> LIM["护耳 -6dB → tanh 软限幅<br/>→ [-0.98, 0.98] 硬边界"]
+    LIM --> SPK["扬声器"]
+    LIM --> TEL["无锁环形缓冲区遥测<br/>RMS · 256 采样波形 · 延迟 · xrun · μs"]
+    TEL --> UI["RMS 驱动声波视觉"]
+    TEL --> HUD["Debug 示波器浮层<br/>仅 src/debug"]
+```
+
+### 工程质量门禁
+
+| 门禁 | 作用 |
+|---|---|
+| Spotless + ktlint 1.8.0 | `spotlessApply` 一键统一格式，`spotlessCheck` 卡住手滑 |
+| Detekt 1.23.8 | 静态分析零 Error，配置在 `config/detekt/detekt.yml` |
+| Konsist 0.17.3 | 架构防腐：模块边界 / ViewModel 归属 / 音频模块零全局可变状态 |
+| Roborazzi 1.79.0 | 5 音色 × 2 主题 × 2 语言 × 2 字号 × 2 布局 = **80 张**像素级视觉回归基准 |
+| Baseline Profiles | `:baselineprofile` 实测生成冷启动/切换/鸣笛关键路径基线 |
+| GitHub Actions | 5 个并行检查 Job + 单一 `ci-gate` 聚合门禁 + APK 体积追踪 |
+
+## 快速上手
+
+### 环境要求（本机实测版本）
+
+| 项 | 版本 |
+|---|---|
+| JDK | 21（Temurin） |
+| Android Studio | Ladybug 或更新 |
+| Android SDK | platform 36 / build-tools 36.x |
+| NDK | 27.0.12077973 |
+| CMake | 3.22.1 |
+| Gradle | 8.13（Wrapper） |
+
+### 高频工程命令
+
+| 命令 | 用途 |
+|---|---|
+| `./gradlew :app:assembleDebug` | 手机端 Debug 包 |
+| `./gradlew :app:assembleRelease` | 手机端 Release 包（R8 + 资源压缩） |
+| `./gradlew :wear:assembleDebug` / `:wear:assembleRelease` | Wear OS 端 |
+| `./gradlew spotlessApply` | 一键格式化 |
+| `./gradlew spotlessCheck detekt` | 格式 + 静态分析门禁 |
+| `./gradlew testDebugUnitTest` | 全模块单测 + Konsist 架构测试 |
+| `./gradlew recordRoborazziDebug` | 重录视觉回归基准图 |
+| `./gradlew verifyRoborazziDebug` | 验证 UI 与基准 100% 一致 |
+| `./gradlew lintDebug` | Android Lint，0 Error |
+| `./gradlew :benchmark:assembleBenchmark` | DSP 性能基准模块构建 |
+| `./gradlew :core:audio:testDebugUnitTest` | DSP 声学 + 渲染预算测试 |
+
+### 彩蛋：呼出 DSP 实时示波器
+
+安装 **Debug** 包后，主界面右上角有一个低调的 `DSP` 标签——点它展开极客调试抽屉。示波器画的是**真实音频环形缓冲区**的波形（假正弦波这种事我们做不出来，会被同行笑一年）。调完参数后点「复制为 Kotlin」，直接粘贴进 `CustomHornProfile` 代码。
+
+### Wear OS 联调
+
+1. 在 Android Studio 里启动 Wear OS 模拟器（API 30+）并配对手机模拟器；
+2. 手机与手表都安装 Debug 包（两端共享 `applicationId = "com.industrial.horn"`）；
+3. 手表端按住即鸣、松手即停；手机端显示引擎实时状态回传。
+
+## 安全免责声明
+
+本应用仅供娱乐、实时 DSP 声学实验与现代 Android 工程架构交流。过马路请严格遵守交通规则、礼让通行，切勿在真实车流中与钢铁巨兽正面对线——我们的 C++ Oboe 音频延迟可以做到 10 ms 以内，但大卡车的物理刹车距离不行。
+
+请勿在图书馆、深夜住宅区、考场附近或他人耳边恶意使用。护耳限幅能保护你的听力，保护不了你的社交关系。一切因「反击过于优雅」导致的路人侧目、邻居敲门或自我感动，本项目概不负责，但会在 Issue 里给你点赞。
+
+## 贡献与协议
+
+- 贡献指南：[CONTRIBUTING.md](CONTRIBUTING.md)（含新增音色 SOP 与 Roborazzi 基准更新流程）
+- 安全披露：[SECURITY.md](SECURITY.md)
+- 架构规约：[docs/spec/](docs/spec/README.md)
+- 协议：[MIT License](LICENSE)
+
+> 咖啡免了，PR 请带测试。

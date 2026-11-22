@@ -203,3 +203,26 @@ jobs:
       - name: Check relative links and referenced source paths
         run: |
           python .github/scripts/check_docs_links.py
+
+  # Single required status check for branch protection: aggregates every gate above.
+  ci-gate:
+    name: ci-gate
+    needs: [static-analysis, unit-and-arch-tests, visual-regression, release-build-and-size, docs-integrity]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Aggregate results
+        run: |
+          results=("${{ needs.static-analysis.result }}" \
+                   "${{ needs.unit-and-arch-tests.result }}" \
+                   "${{ needs.visual-regression.result }}" \
+                   "${{ needs.release-build-and-size.result }}" \
+                   "${{ needs.docs-integrity.result }}")
+          for r in "${results[@]}"; do
+            if [ "$r" != "success" ]; then
+              echo "A required job finished with: $r"
+              exit 1
+            fi
+          done
+          echo "All gates green."

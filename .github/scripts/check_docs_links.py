@@ -50,6 +50,7 @@ def is_external(target: str) -> bool:
 
 
 def check_docs(root: Path) -> list[str]:
+    basename_index = build_basename_index(root)
     errors: list[str] = []
     for doc in iter_doc_files(root):
         text = doc.read_text(encoding="utf-8")
@@ -66,11 +67,30 @@ def check_docs(root: Path) -> list[str]:
             if not target:
                 continue
             resolved = (doc.parent / target).resolve()
-            if not resolved.exists():
-                resolved_root = (root / target).resolve()
-                if not resolved_root.exists():
-                    errors.append(f"{rel}: dead reference -> {raw}")
+            if resolved.exists():
+                continue
+            resolved_root = (root / target).resolve()
+            if resolved_root.exists():
+                continue
+            # Bare file names may be mentioned in prose; accept them when a file with the
+            # same basename exists anywhere in the tracked tree (excluding build outputs).
+            name = target.replace("\\", "/").split("/")[-1]
+            if "/" not in target and name in basename_index:
+                continue
+            errors.append(f"{rel}: dead reference -> {raw}")
     return errors
+
+
+def build_basename_index(root: Path) -> set[str]:
+    names: set[str] = set()
+    skip = {"build", ".git", ".gradle", ".cxx", ".kotlin", "node_modules"}
+    for path in root.rglob("*"):
+        if not path.is_file():
+            continue
+        if skip.intersection(path.relative_to(root).parts):
+            continue
+        names.add(path.name)
+    return names
 
 
 def self_test() -> int:

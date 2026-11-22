@@ -1,48 +1,45 @@
 package com.industrial.horn.ui
 
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.role
-import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.toggleableState
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.industrial.horn.audio.AcousticSpace
 import com.industrial.horn.feature.R
+import com.industrial.horn.ui.theme.AppleGlassSurface
+import com.industrial.horn.ui.theme.AppleRadii
+import com.industrial.horn.ui.theme.GlassSegmentedControl
 import com.industrial.horn.ui.theme.HornCream
 import java.util.Locale
 
+/**
+ * Three-way acoustic space selector on the shared glass segmented control. Tags and radio
+ * semantics match the established UI test contract.
+ */
 @Composable
 fun AcousticSpaceSelector(
     selected: AcousticSpace,
@@ -50,58 +47,31 @@ fun AcousticSpaceSelector(
     onSelect: (AcousticSpace) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Surface(
+    // Accessibility names resolve from resources, so they are computed here and passed as data.
+    val descriptions = AcousticSpace.entries.associateWith { it.accessibilityName() }
+    GlassSegmentedControl(
+        items = AcousticSpace.entries,
+        selected = selected,
+        onSelect = onSelect,
+        accent = accent,
+        itemTag = { "space_${it.name.lowercase(Locale.ROOT)}" },
+        itemDescription = { descriptions.getValue(it) },
         modifier = modifier,
-        shape = RoundedCornerShape(50),
-        color = SelectorSurface,
-        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)),
-    ) {
-        Row(
-            modifier =
-                Modifier
-                    .padding(3.dp)
-                    .selectableGroup(),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            AcousticSpace.entries.forEach { space ->
-                val isSelected = space == selected
-                val description = space.accessibilityName()
-                val label = space.displayName()
-                val background by animateFloatAsState(
-                    targetValue = if (isSelected) 0.18f else 0f,
-                    animationSpec = tween(220),
-                    label = "spaceBackground",
-                )
-                Box(
-                    modifier =
-                        Modifier
-                            .clip(RoundedCornerShape(50))
-                            .background(accent.copy(alpha = background))
-                            .selectable(
-                                selected = isSelected,
-                                role = Role.RadioButton,
-                                onClick = { onSelect(space) },
-                            ).semantics(mergeDescendants = true) {
-                                contentDescription = description
-                                role = Role.RadioButton
-                                this.selected = isSelected
-                            }.testTag("space_${space.name.lowercase(Locale.ROOT)}")
-                            .padding(horizontal = 12.dp, vertical = 7.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        text = label,
-                        color = if (isSelected) HornCream else SelectorMuted,
-                        fontSize = 10.sp,
-                        fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
-                        maxLines = 1,
-                    )
-                }
-            }
-        }
+    ) { space, isSelected ->
+        Text(
+            text = space.displayName(),
+            color = if (isSelected) HornCream else SelectorMuted,
+            fontSize = 10.sp,
+            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
+            maxLines = 1,
+        )
     }
 }
 
+/**
+ * Glass toggle for the physical volume-key trigger. Off means the system volume keys behave
+ * completely normally.
+ */
 @Composable
 fun VolumeTriggerChip(
     enabled: Boolean,
@@ -110,64 +80,80 @@ fun VolumeTriggerChip(
     modifier: Modifier = Modifier,
 ) {
     val description = stringResource(R.string.volume_trigger_description)
-    FilterChip(
-        selected = enabled,
-        onClick = { onChanged(!enabled) },
-        label = {
-            Text(
-                text = stringResource(R.string.volume_trigger_label),
-                fontSize = 10.sp,
-                letterSpacing = 0.5.sp,
-            )
-        },
+    Box(
         modifier =
             modifier
-                .semantics { contentDescription = description }
-                .testTag("volume_trigger_chip"),
-        colors =
-            FilterChipDefaults.filterChipColors(
-                containerColor = SelectorSurface,
-                labelColor = SelectorMuted,
-                selectedContainerColor = accent.copy(alpha = 0.20f),
-                selectedLabelColor = HornCream,
-            ),
-        border =
-            FilterChipDefaults.filterChipBorder(
-                enabled = true,
-                selected = enabled,
-                borderColor = Color.White.copy(alpha = 0.10f),
-                selectedBorderColor = accent.copy(alpha = 0.55f),
-            ),
-        shape = RoundedCornerShape(50),
-    )
+                .semantics {
+                    contentDescription = description
+                    toggleableState = ToggleableState(enabled)
+                }.testTag("volume_trigger_chip"),
+    ) {
+        AppleGlassSurface(
+            shape = RoundedCornerShape(AppleRadii.Capsule),
+            rimAccent = if (enabled) accent else Color.White,
+            frostAlpha = if (enabled) 0.16f else 0.08f,
+            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(7.dp),
+            ) {
+                Box(
+                    modifier =
+                        Modifier
+                            .size(6.dp)
+                            .background(
+                                color = if (enabled) accent else SelectorMuted,
+                                shape = CircleShape,
+                            ),
+                )
+                Text(
+                    text = stringResource(R.string.volume_trigger_label),
+                    color = if (enabled) HornCream else SelectorMuted,
+                    fontSize = 10.sp,
+                    letterSpacing = 0.5.sp,
+                )
+            }
+        }
+        // Full-area click target above the visual pill.
+        Box(
+            modifier =
+                Modifier
+                    .matchParentSize()
+                    .clickable(role = Role.Switch) { onChanged(!enabled) },
+        )
+    }
 }
 
+/**
+ * Ear-protection micro badge. Restyled as a small glass pill; shown only while the -6dB limiter
+ * is engaged.
+ */
 @Composable
 fun EarProtectionBadge(
     visible: Boolean,
     modifier: Modifier = Modifier,
+    accent: Color = MaterialTheme.colorScheme.primary,
 ) {
     if (!visible) return
-    Surface(
+    AppleGlassSurface(
         modifier = modifier.testTag("ear_protection_badge"),
-        shape = RoundedCornerShape(50),
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)),
+        shape = RoundedCornerShape(AppleRadii.Capsule),
+        rimAccent = accent,
+        frostAlpha = 0.12f,
+        contentPadding = PaddingValues(horizontal = 11.dp, vertical = 6.dp),
     ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 11.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
                 modifier =
                     Modifier
                         .size(5.dp)
-                        .background(MaterialTheme.colorScheme.primary, CircleShape),
+                        .background(accent, CircleShape),
             )
             Spacer(modifier = Modifier.size(7.dp))
             Text(
                 text = stringResource(R.string.ear_protection_badge),
-                color = MaterialTheme.colorScheme.primary,
+                color = accent,
                 fontSize = 9.sp,
                 letterSpacing = 0.8.sp,
                 fontWeight = FontWeight.SemiBold,
@@ -176,6 +162,10 @@ fun EarProtectionBadge(
     }
 }
 
+/**
+ * Zero-volume rescue capsule. The dynamic-island banner hosts it; the one-tap action restores
+ * media volume to 60% and the prompt fades away.
+ */
 @Composable
 fun VolumeWarningCapsule(
     visible: Boolean,
@@ -185,56 +175,42 @@ fun VolumeWarningCapsule(
     modifier: Modifier = Modifier,
 ) {
     if (!visible) return
-    val surfaceColor by animateColorAsState(
-        targetValue = accent.copy(alpha = 0.14f),
-        animationSpec = tween(200),
-        label = "volumeWarningColor",
-    )
-    Surface(
+    Row(
         modifier =
             modifier
                 .widthIn(max = 420.dp)
                 .testTag("zero_volume_prompt"),
-        shape = RoundedCornerShape(50),
-        color = surfaceColor,
-        border = BorderStroke(1.dp, accent.copy(alpha = 0.35f)),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        Row(
-            modifier = Modifier.padding(start = 14.dp, end = 4.dp, top = 3.dp, bottom = 3.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            Box(
-                modifier =
-                    Modifier
-                        .size(6.dp)
-                        .background(accent, CircleShape),
-            )
+        Box(
+            modifier =
+                Modifier
+                    .size(6.dp)
+                    .background(accent, CircleShape),
+        )
+        Text(
+            text = stringResource(R.string.zero_volume_title),
+            color = MaterialTheme.colorScheme.onBackground,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Medium,
+        )
+        TextButton(onClick = onSetVolume) {
             Text(
-                text = stringResource(R.string.zero_volume_title),
-                color = MaterialTheme.colorScheme.onBackground,
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.Medium,
+                text = stringResource(R.string.zero_volume_action),
+                color = accent,
+                fontWeight = FontWeight.Bold,
             )
-            TextButton(onClick = onSetVolume) {
-                Text(
-                    text = stringResource(R.string.zero_volume_action),
-                    color = accent,
-                    fontWeight = FontWeight.Bold,
-                )
-            }
-            TextButton(
-                onClick = onDismiss,
-                contentPadding =
-                    androidx.compose.foundation.layout
-                        .PaddingValues(6.dp),
-            ) {
-                Text(
-                    text = stringResource(R.string.zero_volume_dismiss_symbol),
-                    color = SelectorMuted,
-                    fontSize = 18.sp,
-                )
-            }
+        }
+        TextButton(
+            onClick = onDismiss,
+            contentPadding = PaddingValues(6.dp),
+        ) {
+            Text(
+                text = stringResource(R.string.zero_volume_dismiss_symbol),
+                color = SelectorMuted,
+                fontSize = 18.sp,
+            )
         }
     }
 }
@@ -259,5 +235,4 @@ fun AcousticSpace.accessibilityName(): String =
         },
     )
 
-private val SelectorSurface = Color(0xFF151B20)
 private val SelectorMuted = Color(0xFFA8B0B6)

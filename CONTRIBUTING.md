@@ -25,7 +25,7 @@ those versions.
 - Commit messages follow Conventional Commits:
   `type(scope): summary`, where `type` is one of
   `feat|fix|perf|refactor|ui|audio|docs|test|build|ci|chore`.
-- The PR title must also pass the Conventional Commit check (`pr-hygiene.yml`).
+- The PR title must also pass the Conventional Commit check (`.github/workflows/pr-hygiene.yml`).
 
 ## Local quality gates
 
@@ -47,7 +47,7 @@ Run these before pushing; CI runs the same commands.
    (`core/audio/src/test`). The tests assert no NaN/Inf, no clipping beyond `[-1, 1]`, and
    consistent RMS targets.
 3. Add a vector icon in `core/designsystem` (`ic_type_*.xml`) and localized strings
-   (`values/strings.xml`, `values-zh/strings.xml`).
+   (`feature/horn/src/main/res/values/strings.xml`, `feature/horn/src/main/res/values-zh/strings.xml`).
 4. Add a haptic signature in `core/haptic`.
 5. Re-record Roborazzi baselines (see below) and update `docs/spec/02-audio-dsp-engine.md`.
 
@@ -61,8 +61,8 @@ Run these before pushing; CI runs the same commands.
 ```
 
 - Baselines are font-rasterization sensitive. If CI reports mismatches that you cannot reproduce
-  locally, run the `update-screenshots.yml` workflow manually and commit the Linux-recorded
-  baselines it produces.
+  locally, run the `.github/workflows/update-screenshots.yml` workflow manually and commit the
+  Linux-recorded baselines it produces.
 
 ## Specs and ADRs
 

@@ -1,53 +1,38 @@
 package com.industrial.horn.ui
 
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.selection.selectableGroup
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.role
-import androidx.compose.ui.semantics.selected
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.industrial.horn.audio.HornType
 import com.industrial.horn.feature.R
+import com.industrial.horn.ui.theme.GlassSegmentedControl
 import com.industrial.horn.ui.theme.HornCream
 import java.util.Locale
 
 /**
- * Four-way voice selector. It intentionally lives on a graphite capsule in both themes so the
- * bright per-voice accent always keeps accessible contrast. Radio-button semantics expose the
- * selected state to TalkBack without adding a second clickable wrapper.
+ * Five-way voice selector built on the Apple-style glass segmented control. Radio-button semantics
+ * and per-item test tags stay identical to the pre-glass contract so TalkBack and UI tests keep
+ * working unchanged.
  */
 @Composable
 fun HornTypeSelector(
@@ -72,76 +57,47 @@ fun HornTypeSelector(
             Spacer(modifier = Modifier.height(8.dp))
         }
 
-        Surface(
+        // Accessibility names resolve from resources, so they are computed in composable scope
+        // and passed down as plain strings.
+        val descriptions =
+            HornType.entries.associateWith { it.accessibilityName() }
+        GlassSegmentedControl(
+            items = HornType.entries,
+            selected = selected,
+            onSelect = onSelect,
+            accent = accent,
+            enabled = enabled,
+            itemTag = { "horn_type_${it.name.lowercase(Locale.ROOT)}" },
+            itemDescription = { descriptions.getValue(it) },
             modifier =
                 Modifier
                     .widthIn(max = 420.dp)
                     .fillMaxWidth(),
-            shape = RoundedCornerShape(50),
-            color = SelectorSurface,
-            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.09f)),
-        ) {
-            Row(
-                modifier =
-                    Modifier
-                        .padding(4.dp)
-                        .selectableGroup(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                HornType.entries.forEach { type ->
-                    val isSelected = type == selected
-                    val style = type.visualStyle()
-                    val typeDescription = type.accessibilityName()
-                    val typeLabel = type.displayName()
-                    val itemAccent by animateColorAsState(
-                        targetValue = if (isSelected) accent else SelectorMuted,
-                        animationSpec = tween(durationMillis = 260),
-                        label = "voiceAccent_${type.name}",
-                    )
-                    val selectedAlpha by animateFloatAsState(
-                        targetValue = if (isSelected) 0.18f else 0f,
-                        animationSpec = tween(durationMillis = 260),
-                        label = "voiceBackground_${type.name}",
-                    )
-
-                    Column(
-                        modifier =
-                            Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(50))
-                                .background(itemAccent.copy(alpha = selectedAlpha))
-                                .selectable(
-                                    selected = isSelected,
-                                    enabled = enabled,
-                                    role = Role.RadioButton,
-                                    onClick = { onSelect(type) },
-                                ).semantics(mergeDescendants = true) {
-                                    contentDescription = typeDescription
-                                    role = Role.RadioButton
-                                    this.selected = isSelected
-                                }.testTag("horn_type_${type.name.lowercase(Locale.ROOT)}")
-                                .padding(vertical = 7.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                    ) {
-                        Icon(
-                            painter = painterResource(style.iconRes),
-                            contentDescription = null,
-                            tint = itemAccent,
-                            modifier = Modifier.size(18.dp),
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = typeLabel,
-                            color = if (isSelected) HornCream else SelectorMuted,
-                            fontSize = 10.sp,
-                            lineHeight = 12.sp,
-                            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
-                            letterSpacing = 0.3.sp,
-                            maxLines = 1,
-                            textAlign = TextAlign.Center,
-                        )
-                    }
-                }
+        ) { type, isSelected ->
+            val style = type.visualStyle()
+            val itemAccent by animateColorAsState(
+                targetValue = if (isSelected) accent else SelectorMuted,
+                animationSpec = tween(durationMillis = 260),
+                label = "voiceAccent_${type.name}",
+            )
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Icon(
+                    painter = painterResource(style.iconRes),
+                    contentDescription = null,
+                    tint = itemAccent,
+                    modifier = Modifier.size(18.dp),
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = type.displayName(),
+                    color = if (isSelected) HornCream else SelectorMuted,
+                    fontSize = 10.sp,
+                    lineHeight = 12.sp,
+                    fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
+                    letterSpacing = 0.3.sp,
+                    maxLines = 1,
+                    textAlign = TextAlign.Center,
+                )
             }
         }
     }
@@ -171,5 +127,4 @@ fun HornType.accessibilityName(): String =
         },
     )
 
-private val SelectorSurface = Color(0xFF151B20)
 private val SelectorMuted = Color(0xFFA8B0B6)

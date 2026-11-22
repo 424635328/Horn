@@ -9,11 +9,11 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -36,14 +36,15 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -60,10 +61,21 @@ import com.industrial.horn.feature.R
 import com.industrial.horn.presentation.HornFailure
 import com.industrial.horn.presentation.HornStatus
 import com.industrial.horn.presentation.HornUiState
+import com.industrial.horn.ui.theme.AmbientMeshBackground
+import com.industrial.horn.ui.theme.AmbientMeshSpec
+import com.industrial.horn.ui.theme.AmbientPalettes
+import com.industrial.horn.ui.theme.AppleGlassSurface
+import com.industrial.horn.ui.theme.AppleRadii
 import com.industrial.horn.ui.theme.AudioAura
+import com.industrial.horn.ui.theme.DynamicPillBanner
 import com.industrial.horn.ui.theme.HornTheme
 import kotlin.math.min
 
+/**
+ * Main horn screen (v3.5 Apple Glass). The single-button interaction is untouched; the visuals
+ * are layered glass over a breathing ambient mesh, and every high-frequency value (RMS envelope,
+ * expression drag) reaches the draw layer through deferred reads.
+ */
 @Composable
 fun HornScreen(
     state: HornUiState,
@@ -118,6 +130,12 @@ fun HornScreen(
     var expression by remember { mutableFloatStateOf(0f) }
     var showLab by rememberSaveable { mutableStateOf(false) }
 
+    // Deferred-read providers: RMS and expression updates redraw only, never recompose.
+    val rmsState = rememberUpdatedState(telemetry.rms)
+    val expressionState = rememberUpdatedState(expression)
+    val rmsProvider = remember { { rmsState.value } }
+    val expressionProvider = remember { { expressionState.value } }
+
     BoxWithConstraints(
         modifier =
             modifier
@@ -128,8 +146,19 @@ fun HornScreen(
     ) {
         val expanded = windowWidthSizeClass != WindowWidthSizeClass.Compact
         val lowHeight = maxHeight < 620.dp
+        val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
 
-        AmbientBackdrop(accent)
+        AmbientMeshBackground(
+            spec =
+                AmbientMeshSpec(
+                    palette = AmbientPalettes.of(selectedHorn.ambientKey()),
+                    dark = dark,
+                    phaseProvider = { 0f },
+                    rmsProvider = rmsProvider,
+                    honking = isHonking,
+                ),
+            modifier = Modifier.fillMaxSize(),
+        )
 
         val selectHorn: (HornType) -> Unit = { type ->
             expression = 0f
@@ -164,20 +193,22 @@ fun HornScreen(
                             .padding(start = 28.dp, end = 10.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    ControlsColumn(
+                    BrandHeader(
+                        accent = accent,
+                        showTagline = !lowHeight,
+                        modifier = Modifier.padding(top = 52.dp, start = 4.dp, end = 4.dp),
+                    )
+                    Spacer(modifier = Modifier.height(14.dp))
+                    GlassConsole(
                         state = state,
                         accent = accent,
-                        compact = lowHeight,
                         onSelectHorn = selectHorn,
                         onSelectSpace = onSelectSpace,
                         onVolumeTriggerChanged = onVolumeTriggerChanged,
-                        onVolumePromptClicked = onVolumePromptClicked,
-                        onVolumePromptDismissed = onVolumePromptDismissed,
                     )
                     Spacer(modifier = Modifier.weight(1f))
                     Footer(
                         state = state,
-                        accent = accent,
                         compact = false,
                         modifier = Modifier.padding(bottom = 24.dp),
                     )
@@ -186,8 +217,8 @@ fun HornScreen(
                     state = state,
                     accent = accent,
                     visualStyle = visualStyle,
-                    expression = expression,
-                    rms = telemetry.rms,
+                    rmsProvider = rmsProvider,
+                    expressionProvider = expressionProvider,
                     buttonDescription = buttonDescription,
                     buttonStateDescription = buttonStateDescription,
                     buttonLabel = buttonLabel,
@@ -210,22 +241,22 @@ fun HornScreen(
                         .testTag("compact_layout"),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                ControlsColumn(
-                    state = state,
+                BrandHeader(
                     accent = accent,
-                    compact = lowHeight,
-                    onSelectHorn = selectHorn,
-                    onSelectSpace = onSelectSpace,
-                    onVolumeTriggerChanged = onVolumeTriggerChanged,
-                    onVolumePromptClicked = onVolumePromptClicked,
-                    onVolumePromptDismissed = onVolumePromptDismissed,
+                    showTagline = !lowHeight,
+                    modifier =
+                        Modifier.padding(
+                            top = if (lowHeight) 48.dp else 56.dp,
+                            start = 24.dp,
+                            end = 24.dp,
+                        ),
                 )
                 HornHero(
                     state = state,
                     accent = accent,
                     visualStyle = visualStyle,
-                    expression = expression,
-                    rms = telemetry.rms,
+                    rmsProvider = rmsProvider,
+                    expressionProvider = expressionProvider,
                     buttonDescription = buttonDescription,
                     buttonStateDescription = buttonStateDescription,
                     buttonLabel = buttonLabel,
@@ -238,12 +269,77 @@ fun HornScreen(
                             .weight(1f)
                             .fillMaxWidth(),
                 )
-                Footer(
+                GlassConsole(
                     state = state,
                     accent = accent,
+                    onSelectHorn = selectHorn,
+                    onSelectSpace = onSelectSpace,
+                    onVolumeTriggerChanged = onVolumeTriggerChanged,
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp),
+                )
+                Footer(
+                    state = state,
                     compact = lowHeight,
                     modifier = Modifier.padding(bottom = 10.dp, start = 28.dp, end = 28.dp),
                 )
+            }
+        }
+
+        // Dynamic-island banner: zero-volume rescue > ear protection > engine/space status.
+        DynamicPillBanner(
+            visible = true,
+            accent = accent,
+            modifier =
+                Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 8.dp),
+        ) {
+            when {
+                state.showZeroVolumePrompt -> {
+                    VolumeWarningCapsule(
+                        visible = true,
+                        accent = accent,
+                        onSetVolume = onVolumePromptClicked,
+                        onDismiss = onVolumePromptDismissed,
+                    )
+                }
+
+                state.audioSafety.earProtectionActive -> {
+                    EarProtectionBadge(
+                        visible = true,
+                        accent = accent,
+                    )
+                }
+
+                else -> {
+                    Box(
+                        modifier =
+                            Modifier
+                                .size(6.dp)
+                                .background(accent, CircleShape),
+                    )
+                    Text(
+                        text = state.status.bannerLabel(),
+                        color =
+                            if (state.status is HornStatus.Error) {
+                                MaterialTheme.colorScheme.error
+                            } else {
+                                MaterialTheme.colorScheme.onBackground
+                            },
+                        fontSize = 10.sp,
+                        letterSpacing = 1.2.sp,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        text = state.acousticSpace.displayName(),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 10.sp,
+                        letterSpacing = 1.2.sp,
+                    )
+                }
             }
         }
 
@@ -276,67 +372,69 @@ fun HornScreen(
 }
 
 @Composable
-private fun ControlsColumn(
+private fun HornStatus.bannerLabel(): String =
+    stringResource(
+        when (this) {
+            is HornStatus.Error -> R.string.status_error
+            HornStatus.Honking -> R.string.status_honking
+            HornStatus.Idle -> R.string.status_idle
+        },
+    )
+
+/**
+ * Floating glass console: voice selector, acoustic space and the volume-key trigger, grouped in
+ * one frosted island with concentric radii.
+ */
+@Composable
+private fun GlassConsole(
     state: HornUiState,
     accent: Color,
-    compact: Boolean,
     onSelectHorn: (HornType) -> Unit,
     onSelectSpace: (AcousticSpace) -> Unit,
     onVolumeTriggerChanged: (Boolean) -> Unit,
-    onVolumePromptClicked: () -> Unit,
-    onVolumePromptDismissed: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    BrandHeader(
-        accent = accent,
-        showTagline = !compact,
-        modifier = Modifier.padding(top = if (compact) 10.dp else 18.dp, start = 24.dp, end = 24.dp),
-    )
-    EarProtectionBadge(
-        visible = state.audioSafety.earProtectionActive,
-        modifier = Modifier.padding(top = 8.dp),
-    )
-    if (state.showZeroVolumePrompt) {
-        Spacer(modifier = Modifier.height(8.dp))
-        VolumeWarningCapsule(
-            visible = true,
-            accent = accent,
-            onSetVolume = onVolumePromptClicked,
-            onDismiss = onVolumePromptDismissed,
-            modifier = Modifier.padding(horizontal = 20.dp),
-        )
-    }
-    Spacer(modifier = Modifier.height(if (compact) 8.dp else 14.dp))
-    HornTypeSelector(
-        selected = state.selectedHorn,
-        enabled = state.preferencesLoaded,
-        accent = accent,
-        onSelect = onSelectHorn,
-        showLabel = !compact,
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp),
-    )
-    Spacer(modifier = Modifier.height(8.dp))
-    Row(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    AppleGlassSurface(
+        modifier = modifier.widthIn(max = 460.dp),
+        shape = RoundedCornerShape(AppleRadii.Panel),
+        rimAccent = accent,
+        frostAlpha = 0.08f,
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
     ) {
-        AcousticSpaceSelector(
-            selected = state.acousticSpace,
-            accent = accent,
-            onSelect = onSelectSpace,
-            modifier = Modifier.weight(1f),
-        )
-        VolumeTriggerChip(
-            enabled = state.volumeTriggerEnabled,
-            accent = accent,
-            onChanged = onVolumeTriggerChanged,
-        )
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            HornTypeSelector(
+                selected = state.selectedHorn,
+                enabled = state.preferencesLoaded,
+                accent = accent,
+                onSelect = onSelectHorn,
+                showLabel = false,
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp),
+            )
+            Spacer(modifier = Modifier.height(10.dp))
+            Row(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                AcousticSpaceSelector(
+                    selected = state.acousticSpace,
+                    accent = accent,
+                    onSelect = onSelectSpace,
+                    modifier = Modifier.weight(1f),
+                )
+                VolumeTriggerChip(
+                    enabled = state.volumeTriggerEnabled,
+                    accent = accent,
+                    onChanged = onVolumeTriggerChanged,
+                )
+            }
+        }
     }
 }
 
@@ -345,8 +443,8 @@ private fun HornHero(
     state: HornUiState,
     accent: Color,
     visualStyle: HornVisualStyle,
-    expression: Float,
-    rms: Float,
+    rmsProvider: () -> Float,
+    expressionProvider: () -> Float,
     buttonDescription: String,
     buttonStateDescription: String,
     buttonLabel: String,
@@ -364,13 +462,13 @@ private fun HornHero(
         val waveDiameter = diameter * 1.55f
         AudioAura(
             accent = accent,
-            rms = rms,
+            rmsProvider = rmsProvider,
             active = state.isHonking,
             modifier = Modifier.size(diameter * 1.34f),
         )
         SoundWaves(
             active = state.isHonking,
-            rms = rms,
+            rmsProvider = rmsProvider,
             accent = accent,
             style = visualStyle.wave,
             modifier = Modifier.size(waveDiameter),
@@ -383,8 +481,8 @@ private fun HornHero(
             diameter = diameter,
             accent = accent,
             iconRes = visualStyle.iconRes,
-            rms = rms,
-            expression = expression,
+            rmsProvider = rmsProvider,
+            expressionProvider = expressionProvider,
             onPressStart = onPressStart,
             onPressEnd = onPressEnd,
             onPressCancel = onPressCancel,
@@ -394,71 +492,9 @@ private fun HornHero(
 }
 
 @Composable
-private fun AmbientBackdrop(accent: Color) {
-    val background = MaterialTheme.colorScheme.background
-    val surface = MaterialTheme.colorScheme.surface
-    val outline = MaterialTheme.colorScheme.outline
-
-    Canvas(modifier = Modifier.fillMaxSize()) {
-        drawRect(
-            brush =
-                Brush.verticalGradient(
-                    colors = listOf(background, surface.copy(alpha = 0.72f), background),
-                ),
-        )
-
-        val center = Offset(size.width / 2f, size.height * 0.49f)
-        val maxDimension = maxOf(size.width, size.height)
-        drawCircle(
-            brush =
-                Brush.radialGradient(
-                    colors = listOf(accent.copy(alpha = 0.10f), Color.Transparent),
-                    center = center,
-                    radius = maxDimension * 0.52f,
-                ),
-            radius = maxDimension * 0.52f,
-            center = center,
-        )
-
-        val gridStep = 56.dp.toPx()
-        var x = 0f
-        while (x < size.width) {
-            drawLine(outline.copy(alpha = 0.045f), Offset(x, 0f), Offset(x, size.height), 1f)
-            x += gridStep
-        }
-        var y = 0f
-        while (y < size.height) {
-            drawLine(outline.copy(alpha = 0.04f), Offset(0f, y), Offset(size.width, y), 1f)
-            y += gridStep
-        }
-
-        val ringBase = min(size.width, size.height) * 0.22f
-        repeat(4) { index ->
-            drawCircle(
-                color = outline.copy(alpha = 0.055f - index * 0.008f),
-                radius = ringBase * (index + 1),
-                center = center,
-                style = Stroke(width = 1.dp.toPx()),
-            )
-        }
-
-        drawCircle(
-            brush =
-                Brush.radialGradient(
-                    colors = listOf(accent.copy(alpha = 0.045f), Color.Transparent),
-                    center = Offset(size.width / 2f, size.height * 1.02f),
-                    radius = size.width * 0.7f,
-                ),
-            radius = size.width * 0.7f,
-            center = Offset(size.width / 2f, size.height * 1.02f),
-        )
-    }
-}
-
-@Composable
 private fun SoundWaves(
     active: Boolean,
-    rms: Float,
+    rmsProvider: () -> Float,
     accent: Color,
     style: WaveStyle,
     modifier: Modifier = Modifier,
@@ -477,9 +513,10 @@ private fun SoundWaves(
             ),
         label = "hornWaveProgress",
     )
-    val pressure = 0.35f + rms.coerceIn(0f, 1f) * 0.9f
 
     Canvas(modifier = modifier) {
+        val rms = rmsProvider().coerceIn(0f, 1f)
+        val pressure = 0.35f + rms * 0.9f
         val center = Offset(size.width / 2f, size.height / 2f)
         val baseRadius = min(size.width, size.height) * 0.315f
         val ringCount = style.ringCount.coerceAtLeast(1)
@@ -548,29 +585,13 @@ private fun BrandHeader(
 @Composable
 private fun Footer(
     state: HornUiState,
-    accent: Color,
     compact: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    val isError = state.status is HornStatus.Error
-    val statusColor =
-        when {
-            isError -> MaterialTheme.colorScheme.error
-            state.isHonking -> accent
-            else -> MaterialTheme.colorScheme.onSurfaceVariant
-        }
-    val statusText =
-        stringResource(
-            when {
-                isError -> R.string.status_error
-                state.isHonking -> R.string.status_honking
-                else -> R.string.status_idle
-            },
-        )
     val hint =
         stringResource(
             when {
-                isError -> R.string.horn_hint_error
+                state.status is HornStatus.Error -> R.string.horn_hint_error
                 state.isHonking -> R.string.horn_hint_honking
                 else -> R.string.horn_hint
             },
@@ -580,36 +601,7 @@ private fun Footer(
         modifier = modifier,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Row(
-            modifier =
-                Modifier
-                    .background(
-                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.82f),
-                        shape = RoundedCornerShape(50),
-                    ).border(
-                        width = 1.dp,
-                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.28f),
-                        shape = RoundedCornerShape(50),
-                    ).padding(horizontal = 14.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(
-                modifier =
-                    Modifier
-                        .size(6.dp)
-                        .background(statusColor, CircleShape),
-            )
-            Spacer(modifier = Modifier.size(8.dp))
-            Text(
-                text = statusText,
-                color = statusColor,
-                style = MaterialTheme.typography.labelSmall,
-                letterSpacing = 1.5.sp,
-            )
-        }
-
         if (!compact) {
-            Spacer(modifier = Modifier.height(12.dp))
             Text(
                 text = hint,
                 modifier = Modifier.widthIn(max = 380.dp),

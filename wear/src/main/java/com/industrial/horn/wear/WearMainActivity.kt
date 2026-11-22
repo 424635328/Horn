@@ -3,6 +3,8 @@ package com.industrial.horn.wear
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -29,6 +31,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
@@ -120,6 +123,11 @@ private fun WearHornScreen(
         contentAlignment = Alignment.Center,
     ) {
         val diameter = min(maxWidth.value, maxHeight.value) * 0.68f
+        val pressScale by animateFloatAsState(
+            targetValue = if (isHolding) 0.93f else 1f,
+            animationSpec = spring(dampingRatio = 0.55f, stiffness = 650f),
+            label = "wearPressScale",
+        )
 
         Canvas(modifier = Modifier.fillMaxSize()) {
             val center = Offset(size.width / 2f, size.height / 2f)
@@ -157,7 +165,10 @@ private fun WearHornScreen(
                 modifier =
                     Modifier
                         .size(diameter.dp)
-                        .testTag("wear_horn_button")
+                        .graphicsLayer {
+                            scaleX = pressScale
+                            scaleY = pressScale
+                        }.testTag("wear_horn_button")
                         .semantics {
                             role = Role.Button
                             contentDescription = "Hold to honk on the phone"

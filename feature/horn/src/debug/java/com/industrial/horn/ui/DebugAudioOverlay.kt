@@ -3,16 +3,17 @@ package com.industrial.horn.ui
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -28,10 +29,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.industrial.horn.audio.AudioTelemetry
+import com.industrial.horn.ui.theme.AppleGlassSurface
+import com.industrial.horn.ui.theme.AppleNumbers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 
@@ -68,76 +72,92 @@ fun DebugAudioOverlayHost(
         }
     }
 
-    Surface(
+    Box(
         modifier =
             modifier
                 .width(300.dp)
+                .background(Color(0xCC0B0F13), RoundedCornerShape(14.dp))
                 .testTag("debug_audio_overlay"),
-        shape = RoundedCornerShape(14.dp),
-        color = Color(0xEE0B0F13),
-        tonalElevation = 4.dp,
     ) {
-        Column(
-            modifier = Modifier.padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
+        AppleGlassSurface(
+            modifier = Modifier.fillMaxSize(),
+            shape = RoundedCornerShape(14.dp),
+            rimAccent = accent,
+            frostAlpha = 0.16f,
+            contentPadding =
+                androidx.compose.foundation.layout
+                    .PaddingValues(12.dp),
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
+            Column(
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "DSP · ${telemetry.engineName}",
+                        color = accent,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    TextButton(onClick = { expanded = false }) {
+                        Text("×", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
                 Text(
-                    text = "DSP · ${telemetry.engineName}",
-                    color = accent,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
+                    text =
+                        "RMS ${"%.3f".format(telemetry.rms)}  ·  " +
+                            "LAT ${"%.1f".format(telemetry.latencyMs)} ms  ·  " +
+                            "XRUN ${telemetry.xrunCount}",
+                    style =
+                        TextStyle(
+                            color = Color(0xFFA8B0B6),
+                            fontSize = 9.sp,
+                            fontFeatureSettings = AppleNumbers.TABULAR,
+                        ),
                 )
-                TextButton(onClick = { expanded = false }) {
-                    Text("×", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    text =
+                        "RENDER ${telemetry.renderTimeMicros} µs  ·  " +
+                            "PLAYING ${telemetry.isPlaying}",
+                    style =
+                        TextStyle(
+                            color = Color(0xFFA8B0B6),
+                            fontSize = 9.sp,
+                            fontFeatureSettings = AppleNumbers.TABULAR,
+                        ),
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Canvas(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .height(74.dp)
+                            .background(Color(0xFF05080A), RoundedCornerShape(6.dp)),
+                ) {
+                    val middle = size.height / 2f
+                    drawLine(
+                        color = accent.copy(alpha = 0.25f),
+                        start = Offset(0f, middle),
+                        end = Offset(size.width, middle),
+                        strokeWidth = 1f,
+                    )
+                    val path = Path()
+                    val count = samples.size.coerceAtLeast(2)
+                    for (index in 0 until count) {
+                        val x = index.toFloat() / (count - 1) * size.width
+                        val y = middle - samples[index].coerceIn(-1f, 1f) * middle * 0.88f
+                        if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
+                    }
+                    drawPath(
+                        path = path,
+                        color = accent,
+                        style = Stroke(width = 1.3f),
+                    )
                 }
-            }
-            Text(
-                text =
-                    "RMS ${"%.3f".format(telemetry.rms)}  ·  " +
-                        "LAT ${"%.1f".format(telemetry.latencyMs)} ms  ·  " +
-                        "XRUN ${telemetry.xrunCount}",
-                color = Color(0xFFA8B0B6),
-                fontSize = 9.sp,
-            )
-            Text(
-                text =
-                    "RENDER ${telemetry.renderTimeMicros} µs  ·  " +
-                        "PLAYING ${telemetry.isPlaying}",
-                color = Color(0xFFA8B0B6),
-                fontSize = 9.sp,
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Canvas(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .height(74.dp)
-                        .background(Color(0xFF05080A), RoundedCornerShape(6.dp)),
-            ) {
-                val middle = size.height / 2f
-                drawLine(
-                    color = accent.copy(alpha = 0.25f),
-                    start = Offset(0f, middle),
-                    end = Offset(size.width, middle),
-                    strokeWidth = 1f,
-                )
-                val path = Path()
-                val count = samples.size.coerceAtLeast(2)
-                for (index in 0 until count) {
-                    val x = index.toFloat() / (count - 1) * size.width
-                    val y = middle - samples[index].coerceIn(-1f, 1f) * middle * 0.88f
-                    if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
-                }
-                drawPath(
-                    path = path,
-                    color = accent,
-                    style = Stroke(width = 1.3f),
-                )
             }
         }
     }

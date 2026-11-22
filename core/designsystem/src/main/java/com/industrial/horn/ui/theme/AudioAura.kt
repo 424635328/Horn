@@ -25,20 +25,22 @@ import kotlin.math.min
 
 /**
  * Audio-pressure aura. API 33+ uses an AGSL RuntimeShader for the metallic light field; older
- * devices use the same geometry through a high-quality Compose Canvas fallback.
+ * devices use the same geometry through a high-quality Compose Canvas fallback. The RMS level is
+ * read lazily through [rmsProvider] inside draw lambdas so envelope updates redraw without
+ * recomposition.
  */
 @Composable
 fun AudioAura(
     accent: Color,
-    rms: Float,
+    rmsProvider: () -> Float,
     active: Boolean,
     modifier: Modifier = Modifier,
 ) {
     if (!active) return
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-        AgslAura(accent = accent, rms = rms, modifier = modifier)
+        AgslAura(accent = accent, rmsProvider = rmsProvider, modifier = modifier)
     } else {
-        CanvasAura(accent = accent, rms = rms, modifier = modifier)
+        CanvasAura(accent = accent, rmsProvider = rmsProvider, modifier = modifier)
     }
 }
 
@@ -46,7 +48,7 @@ fun AudioAura(
 @Composable
 private fun AgslAura(
     accent: Color,
-    rms: Float,
+    rmsProvider: () -> Float,
     modifier: Modifier,
 ) {
     val shader = remember { RuntimeShader(AURA_SHADER) }
@@ -66,12 +68,13 @@ private fun AgslAura(
     )
 
     Canvas(modifier = modifier) {
+        val rms = rmsProvider().coerceIn(0f, 1f)
         shader.setFloatUniform("uResolution", size.width, size.height)
         shader.setFloatUniform("uTime", time * 6.28318f)
-        shader.setFloatUniform("uRms", rms.coerceIn(0f, 1f))
+        shader.setFloatUniform("uRms", rms)
         shader.setFloatUniform("uAccent", accent.red, accent.green, accent.blue)
         paint.shader = shader
-        paint.alpha = (90 + rms.coerceIn(0f, 1f) * 165).toInt()
+        paint.alpha = (90 + rms * 165).toInt()
         drawIntoCanvas { canvas ->
             canvas.nativeCanvas.drawCircle(
                 size.width / 2f,
@@ -86,7 +89,7 @@ private fun AgslAura(
 @Composable
 private fun CanvasAura(
     accent: Color,
-    rms: Float,
+    rmsProvider: () -> Float,
     modifier: Modifier,
 ) {
     val transition = rememberInfiniteTransition(label = "canvasAura")
@@ -97,8 +100,9 @@ private fun CanvasAura(
         label = "canvasAuraPhase",
     )
     Canvas(modifier = modifier) {
+        val rms = rmsProvider().coerceIn(0f, 1f)
         val center = Offset(size.width / 2f, size.height / 2f)
-        val strength = 0.18f + rms.coerceIn(0f, 1f) * 0.55f
+        val strength = 0.18f + rms * 0.55f
         drawCircle(
             brush =
                 Brush.radialGradient(

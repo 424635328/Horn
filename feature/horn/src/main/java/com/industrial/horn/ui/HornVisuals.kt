@@ -4,11 +4,22 @@ import androidx.annotation.DrawableRes
 import androidx.compose.ui.graphics.Color
 import com.industrial.horn.audio.HornType
 import com.industrial.horn.designsystem.R
+import com.industrial.horn.ui.theme.AmbientKey
 import com.industrial.horn.ui.theme.HornAmber
 import com.industrial.horn.ui.theme.HornBlue
 import com.industrial.horn.ui.theme.HornMint
 import com.industrial.horn.ui.theme.HornSignal
 import com.industrial.horn.ui.theme.HornViolet
+
+/** Maps a horn voice onto its design-system ambient light palette key. */
+fun HornType.ambientKey(): AmbientKey =
+    when (this) {
+        HornType.CAR -> AmbientKey.CAR
+        HornType.TRAIN -> AmbientKey.TRAIN
+        HornType.EBIKE -> AmbientKey.EBIKE
+        HornType.MOTORCYCLE -> AmbientKey.MOTORCYCLE
+        HornType.CUSTOM -> AmbientKey.CUSTOM
+    }
 
 /** Per-voice visual language: accent, central icon and acoustic-inspired wave geometry. */
 data class HornVisualStyle(

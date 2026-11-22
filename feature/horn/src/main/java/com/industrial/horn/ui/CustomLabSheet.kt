@@ -5,9 +5,11 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -17,7 +19,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -38,6 +39,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.industrial.horn.audio.CustomHornProfile
 import com.industrial.horn.feature.R
+import com.industrial.horn.ui.theme.AppleGlassSurface
+import com.industrial.horn.ui.theme.AppleRadii
+import com.industrial.horn.ui.theme.GlassCapsuleSlider
 import com.industrial.horn.ui.theme.HornCream
 import com.industrial.horn.ui.theme.HornInk
 
@@ -173,7 +177,7 @@ fun CustomLabSheet(
 
             Spacer(modifier = Modifier.height(14.dp))
             val previewDescription = stringResource(R.string.custom_preview_description)
-            Surface(
+            Box(
                 modifier =
                     Modifier
                         .fillMaxWidth()
@@ -193,20 +197,25 @@ fun CustomLabSheet(
                                 }
                             }
                         },
-                shape = RoundedCornerShape(50),
-                color = accent,
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center,
+                AppleGlassSurface(
+                    modifier = Modifier.fillMaxSize(),
+                    shape = RoundedCornerShape(AppleRadii.Capsule),
+                    rimAccent = accent,
+                    frostAlpha = 0.18f,
                 ) {
-                    Text(
-                        text = stringResource(R.string.custom_preview),
-                        color = HornInk,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 1.6.sp,
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center,
+                    ) {
+                        Text(
+                            text = stringResource(R.string.custom_preview),
+                            color = accent,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 1.6.sp,
+                        )
+                    }
                 }
             }
 
@@ -254,20 +263,15 @@ private fun LabSlider(
     accent: Color,
     onValueChange: (Float) -> Unit,
 ) {
-    Column(modifier = Modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Text(text = label, color = LabMuted, fontSize = 12.sp)
-            Text(text = valueText, color = accent, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-        }
-        Slider(
-            value = value.coerceIn(valueRange),
-            onValueChange = onValueChange,
-            valueRange = valueRange,
-        )
-    }
+    GlassCapsuleSlider(
+        value = value,
+        valueRange = valueRange,
+        onValueChange = onValueChange,
+        accent = accent,
+        label = label,
+        valueText = valueText,
+        modifier = Modifier.fillMaxWidth(),
+    )
 }
 
 private val LabSurface = Color(0xFF101519)

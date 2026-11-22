@@ -8,6 +8,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
+import androidx.glance.ImageProvider
 import androidx.glance.LocalSize
 import androidx.glance.action.ActionParameters
 import androidx.glance.action.clickable
@@ -28,6 +29,7 @@ import androidx.glance.text.Text
 import androidx.glance.text.TextAlign
 import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
+import com.industrial.horn.R
 
 /**
  * 1x1 / 2x2 home-screen widget. The tap target is the whole widget; playback is delegated to a
@@ -54,7 +56,7 @@ private fun HornWidgetContent() {
         modifier =
             GlanceModifier
                 .fillMaxSize()
-                .background(ColorProvider(Color(0xFF101519)))
+                .background(ImageProvider(R.drawable.widget_glass_bg))
                 .cornerRadius(24.dp)
                 .clickable(actionRunCallback<WidgetHonkAction>())
                 .padding(10.dp),
