@@ -59,3 +59,17 @@ subprojects {
         }
     }
 }
+
+// Local-first quality gate: the exact surface CI's `checks` job runs. Developers (and the
+// pre-push hook) run this single command so GitHub CI stays a lightweight re-verification.
+tasks.register("checkAll") {
+    group = "verification"
+    description =
+        "Runs every quality gate: spotlessCheck, detekt, lintDebug, testDebugUnitTest, verifyRoborazziDebug."
+}
+
+gradle.projectsEvaluated {
+    val gateNames = setOf("spotlessCheck", "detekt", "lintDebug", "testDebugUnitTest", "verifyRoborazziDebug")
+    val gates = allprojects.flatMap { project -> project.tasks.matching { it.name in gateNames } }
+    tasks.named("checkAll").configure { dependsOn(gates) }
+}

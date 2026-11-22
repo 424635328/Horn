@@ -29,7 +29,16 @@ those versions.
 
 ## Local quality gates
 
-Run these before pushing; CI runs the same commands.
+The project is **local-first**: run the full gate locally before pushing — CI re-runs the same
+command as a lightweight verification, not as the first line of defense.
+
+```bash
+git config core.hooksPath .githooks   # install the pre-push hook (once per clone)
+./gradlew checkAll                    # every gate below, one command
+```
+
+The pre-push hook runs `checkAll` plus the docs link check automatically (bypass in an
+emergency with `git push --no-verify`). Individual gates:
 
 ```bash
 ./gradlew spotlessApply               # auto-format Kotlin / Gradle / misc files
@@ -37,7 +46,11 @@ Run these before pushing; CI runs the same commands.
 ./gradlew testDebugUnitTest           # all unit tests incl. Konsist architecture tests
 ./gradlew verifyRoborazziDebug        # visual regression against committed baselines
 ./gradlew lintDebug                   # Android Lint, zero errors
+python .github/scripts/check_docs_links.py   # docs zero-dead-link check
 ```
+
+CI's `checks` job runs exactly `checkAll` plus the docs check; only the `release-build-and-size`
+job additionally compiles the Oboe NDK engine and R8 release APKs.
 
 ## Adding a new horn voice
 

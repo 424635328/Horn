@@ -20,10 +20,13 @@ env:
   GRADLE_OPTS: -Dorg.gradle.daemon=false
 
 jobs:
-  static-analysis:
-    name: Code Quality Gate
+  # Merged verification gate: static analysis + unit/arch tests + visual regression +
+  # docs integrity share ONE Gradle invocation so compilation happens exactly once.
+  # The same surface is available locally as `./gradlew checkAll` (see CONTRIBUTING.md).
+  checks:
+    name: Checks (static analysis · tests · visual · docs)
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
 
@@ -32,100 +35,32 @@ jobs:
         with:
           distribution: temurin
           java-version: "21"
-      - name: Install pinned NDK and CMake
-        run: |
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;27.0.12077973" "cmake;3.22.1"
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Spotless + Detekt + Android Lint
-        run: ./gradlew spotlessCheck detekt lintDebug
+      - name: All quality gates in one invocation
+        run: ./gradlew spotlessCheck detekt lintDebug testDebugUnitTest verifyRoborazziDebug
 
-      - name: Upload quality reports
+      - name: Docs link integrity
+        run: python3 .github/scripts/check_docs_links.py
+
+      - name: Upload reports and visual diffs
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: quality-reports
+          name: check-reports
           path: |
             **/build/reports/detekt/**
             **/build/reports/lint-results-*.html
             **/build/reports/lint-results-*.xml
-          retention-days: 7
-
-  unit-and-arch-tests:
-    name: Unit & Architecture Tests
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up JDK 21
-        uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: "21"
-      - name: Install pinned NDK and CMake
-        run: |
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;27.0.12077973" "cmake;3.22.1"
-
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
-
-      - name: All-module unit tests (DSP, Konsist, ViewModel, Wear)
-        run: ./gradlew testDebugUnitTest
-
-      - name: Upload test reports
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: unit-test-reports
-          path: |
             **/build/reports/tests/**
-            **/build/test-results/**
-          retention-days: 7
-
-  visual-regression:
-    name: Visual Regression Tests
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up JDK 21
-        uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: "21"
-
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
-
-      - name: Verify Roborazzi baselines
-        run: ./gradlew verifyRoborazziDebug
-
-      - name: Report mismatch guidance
-        if: failure()
-        run: |
-          {
-            echo "## Roborazzi visual regression failed"
-            echo ""
-            echo "The rendered UI no longer matches the committed baselines."
-            echo "If the change is intentional, refresh the Linux baselines by manually"
-            echo "running the \`update-screenshots.yml\` workflow and commit the result."
-            echo "Diff images are attached to this run as the \`roborazzi-diffs\` artifact."
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Upload Roborazzi diffs
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: roborazzi-diffs
-          path: |
             **/build/outputs/roborazzi/**
             **/build/reports/roborazzi/**
           retention-days: 7
 
+  # The only job that needs the NDK: it proves the Oboe C++ engine and R8 release
+  # pipeline stay green, and publishes the APK size budget to the step summary.
   release-build-and-size:
     name: Release R8 Build & APK Size Report
     runs-on: ubuntu-latest
@@ -138,6 +73,7 @@ jobs:
         with:
           distribution: temurin
           java-version: "21"
+
       - name: Install pinned NDK and CMake
         run: |
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;27.0.12077973" "cmake;3.22.1"
@@ -173,38 +109,17 @@ jobs:
             wear/build/outputs/apk/release/*.apk
           retention-days: 5
 
-  docs-integrity:
-    name: Docs Link Integrity
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Check relative links and referenced source paths
-        run: |
-          python .github/scripts/check_docs_links.py
-
   # Single required status check for branch protection: aggregates every gate above.
   ci-gate:
     name: ci-gate
-    needs: [static-analysis, unit-and-arch-tests, visual-regression, release-build-and-size, docs-integrity]
+    needs: [checks, release-build-and-size]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Aggregate results
         run: |
-          results=("${{ needs.static-analysis.result }}" \
-                   "${{ needs.unit-and-arch-tests.result }}" \
-                   "${{ needs.visual-regression.result }}" \
-                   "${{ needs.release-build-and-size.result }}" \
-                   "${{ needs.docs-integrity.result }}")
-          for r in "${results[@]}"; do
+          for r in "${{ needs.checks.result }}" "${{ needs.release-build-and-size.result }}"; do
             if [ "$r" != "success" ]; then
               echo "A required job finished with: $r"
               exit 1

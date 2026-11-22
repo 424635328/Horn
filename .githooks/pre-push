@@ -1,0 +1,19 @@
+#!/bin/sh
+# Horn pre-push hook — the same quality gate CI runs, executed locally first so
+# GitHub CI stays a lightweight re-verification instead of the first line of defense.
+#
+# Install once per clone:   git config core.hooksPath .githooks
+# Emergency bypass:         git push --no-verify
+
+if ! ./gradlew --console=plain -q checkAll; then
+  echo "[pre-push] checkAll failed. Fix the issues, or bypass with: git push --no-verify" >&2
+  exit 1
+fi
+
+PY=$(command -v python3 || command -v python)
+if [ -z "$PY" ] || ! "$PY" .github/scripts/check_docs_links.py; then
+  echo "[pre-push] docs link check failed. Fix dead links, or bypass with: git push --no-verify" >&2
+  exit 1
+fi
+
+echo "[pre-push] all local gates green."

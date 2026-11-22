@@ -45,7 +45,7 @@ Release 实现 MUST 为空实现：不引入状态、不消费遥测、不分配
 
 | 门禁 | 工具/版本 | 命令 | 卡点 |
 |---|---|---|---|
-| 格式与排版 | Spotless 8.9.0 + ktlint 1.8.0 | `./gradlew spotlessApply`（本地）/ `./gradlew spotlessCheck`（CI） | CI `static-analysis` job 失败即拒合 |
+| 格式与排版 | Spotless 8.9.0 + ktlint 1.8.0 | `./gradlew spotlessApply`（本地）/ `./gradlew spotlessCheck`（CI） | CI `checks` job 失败即拒合 |
 | Kotlin 静态分析 | Detekt 1.23.8 | `./gradlew detekt` | `buildUponDefaultConfig` + `config/detekt/detekt.yml`，`jvmTarget = 17`，违规即红 |
 | Android Lint | AGP Lint（`app/lint.xml`） | `./gradlew lintDebug` | `abortOnError = true`、`warningsAsErrors = true` |
 | 架构约束 | Konsist 0.17.3 | `./gradlew :app:testDebugUnitTest`（ArchitectureTest） | 4 条规则任一违反即红 |
@@ -147,21 +147,19 @@ Release 构建 MUST 开启代码与资源压缩：`app/build.gradle.kts` 的 rel
 
 ### 5.1 ci.yml
 
-`.github/workflows/ci.yml` 触发于 push（main、develop）、pull_request 与 workflow_dispatch；`permissions: contents: read`；非 main 分支的过期运行会被 concurrency 取消。公共环境：JDK 21（temurin）、`android-actions/setup-android@v3` + 固定 NDK 27.0.12077973 与 CMake 3.22.1、`gradle/actions/setup-gradle@v4`、`GRADLE_OPTS: -Dorg.gradle.daemon=false`。
+`.github/workflows/ci.yml` 触发于 push（main、develop）、pull_request 与 workflow_dispatch；`permissions: contents: read`；非 main 分支的过期运行会被 concurrency 取消。公共环境：JDK 21（temurin）、`gradle/actions/setup-gradle@v4`、`GRADLE_OPTS: -Dorg.gradle.daemon=false`；NDK 27.0.12077973 与 CMake 3.22.1 **仅**在 `release-build-and-size` job 内经 runner 预装的 `sdkmanager` 安装（其余 job 无需原生编译，完全不装）。
 
 | job id | 显示名 | 核心命令 | 失败/产物行为 |
 |---|---|---|---|
-| `static-analysis` | Code Quality Gate | `./gradlew spotlessCheck detekt lintDebug` | 失败上传 `quality-reports`（detekt/lint 报告，7 天） |
-| `unit-and-arch-tests` | Unit & Architecture Tests | `./gradlew testDebugUnitTest` | `always()` 上传 `unit-test-reports` |
-| `visual-regression` | Visual Regression Tests | `./gradlew verifyRoborazziDebug` | 失败写 `$GITHUB_STEP_SUMMARY` 指引并上传 `roborazzi-diffs` |
+| `checks` | Checks（静态分析·测试·视觉·文档） | `./gradlew spotlessCheck detekt lintDebug testDebugUnitTest verifyRoborazziDebug` + `python3 .github/scripts/check_docs_links.py` | 失败上传 `check-reports`（detekt/lint/测试报告与 Roborazzi diff，7 天） |
 | `release-build-and-size` | Release R8 Build & APK Size Report | `./gradlew :app:assembleRelease :wear:assembleRelease` | `$GITHUB_STEP_SUMMARY` 输出 APK 体积表；上传 `release-apks`（5 天） |
-| `docs-integrity` | Docs Link Integrity | `python .github/scripts/check_docs_links.py` | 死链/幽灵路径非零退出即红 |
-| `ci-gate` | ci-gate（聚合门禁） | 汇总上述 5 个 job 结果 | `if: always()`；任一前置非 success 即失败 |
+| `ci-gate` | ci-gate（聚合门禁） | 汇总 `checks` 与 `release-build-and-size` | `if: always()`；任一前置非 success 即失败 |
 
 说明：
 
-- 五个检查 job 并行运行；`ci-gate` 聚合门禁 `needs` 全部五个 job 并以 `if: always()` 汇总——分支保护 MUST 仅配置 `ci-gate` 一个必过检查项（见 §8）。
-- `docs-integrity` 校验所有 README 与 `docs/**/*.md` 的相对链接及反引号源码路径必须真实存在，本文档全部锚点均受其执法。
+- **本地优先（Local-first）**：检查面在本地由 `./gradlew checkAll` 一键执行；`.githooks/pre-push` 钩子推送前自动运行 `checkAll` + 文档死链检查（启用：`git config core.hooksPath .githooks`；紧急绕行 `git push --no-verify`）。CI 是轻量复验而非首道防线。
+- **同类合并**：静态分析/单测/视觉回归/文档校验合并进单一 `checks` job 的**单次 Gradle 调用**，全工程编译只发生一次；这与本地 `checkAll` 严格同面（MUST 保持两者任务清单一致）。
+- `checks` job 校验所有 README 与 `docs/**/*.md` 的相对链接及反引号源码路径必须真实存在，本文档全部锚点均受其执法。
 - 视觉回归失败时的处置流程 MUST 为：确认改动是否为有意变更 → 以 `.github/workflows/update-screenshots.yml` 在 Linux 重录基准 → 提交刷新后的基准，严禁在本地（Windows）录制基准混入。
 
 ### 5.2 release.yml
@@ -209,9 +207,9 @@ graph TD
 - `RenderBudgetTest` / `ZeroGcAudioPathTest` 在 JVM 上测量，反映相对预算而非真机实时线程行为；真机 xrun 与延迟以运行时遥测为准。
 - R8 断言缺失：`app/proguard-rules.pro` 的正确性目前由 release 构建成功与人工抽查验证，无 mapping 自动比对测试。
 - 签名链路为预留：当前构建脚本未配置 AGP signingConfig，`.github/workflows/release.yml` 解码的 keystore 尚未被构建消费，发布产物实为未签名 APK；Secrets 就绪后 MUST 补齐 signingConfig 并复核发布产物。
-- 分支保护若未绑定 `ci-gate` 而逐个绑定 5 个 job id，漏配单个 job 会留出绕过窗口；推荐只绑 `ci-gate`。
+- 分支保护若未绑定 `ci-gate` 而逐个绑定前置 job id，漏配单个 job 会留出绕过窗口；推荐只绑 `ci-gate`。
 - Baseline Profile 无 CI 自动生成：`generateHornStartupProfile` 需手工在设备上跑，规则文件可能滞后于 UI 结构变化。
-- 质量门禁并行运行，无统一失败归因；`static-analysis` 与 `release-build-and-size` 的 NDK/CMake 安装重复，冷启动耗时高于必要下限。
+- 质量门禁已合并为 `checks` 单 job 单次 Gradle 调用；NDK/CMake 安装已收敛至 `release-build-and-size` 一处（曾为多 job 重复安装，已于本地优先改造中消除）。
 
 ## 9. 源码锚点
 
