@@ -275,6 +275,22 @@ flowchart LR
 Debug 示波器经 `readWaveform` 读真实波形环，编译期隔离于 `src/debug`
 （`feature/horn/src/debug/java/com/industrial/horn/ui/DebugAudioOverlay.kt`，见 ADR-0005）。
 
+### 5.1 立体声遥测契约（Stereo Telemetry Contract，v3.6 引入）
+
+`AudioTelemetry`（`core/audio/src/main/java/com/industrial/horn/audio/AudioTelemetry.kt`）除既有字段外
+MUST 暴露：
+
+| 字段 | 类型/范围 | 语义 |
+|---|---|---|
+| `rmsLeft` / `rmsRight` | `Float`，`0..1` | L/R 声道块级 RMS 响度包络 |
+| `stereoCorrelation` | `Float`，`[-1, +1]` | L/R 块 Pearson 相关系数；静音块 MUST 报 `1`（防伪反相） |
+| `outputMode` | `OutputMode` | 当前心理声学输出级：`SPEAKER_VBS`（外放虚拟低音）/ `HEADPHONE_FULL_RANGE`（耳机全频） |
+
+`AudioTelemetryBuffer` 双声道无锁环形缓冲：L/R 独立 256 采样环（`readWaveformStereo`），相关系数按
+`corr = Σlr / sqrt(Σl²·Σr²)` 逐块计算（能量 < 1e-12 判静音返回 1）；旧单声道 API（`update`/`pushWaveform`/
+`readWaveform`）保持兼容（L=R 镜像、corr=1）。参数平滑 MUST 经 `dsp/OnePoleSmoother`（一阶低通
+`y[n]=y[n-1]+a(x[n]-y[n-1])`，`a` 由平滑时间常数换算），严禁拉链噪声。
+
 ## 6. 实时性能预算
 
 预算推导：48 kHz 下 128 帧回调周期 = `128 / 48000 ≈ 2.667 ms`，即单块渲染 MUST 远低于 2.66 ms，
