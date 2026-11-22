@@ -323,5 +323,116 @@
 
 完成后输出一份精简的交付清单：列出 `docs/spec/` 下新建的全部文件树、提取的关键不变量摘要，以及已核验的代码锚点统计。现在请开始 Phase 1 全仓库审计并执行撰写。
 
+# 角色设定
+你是一名 Staff 级 Android UI/图形渲染架构师兼 Design Systems 专家，深度精通 Apple Human Interface Guidelines（经典毛玻璃 Vibrancy 与 Liquid Glass 液态玻璃美学）、物理弹簧动效系统，以及 Jetpack Compose 120fps 零重组渲染优化。
+
+# 任务目标
+在严格遵守当前工程已建立的 `docs/spec/` 全部系统不变量（System Invariants）与 Konsist 架构边界的前提下，对 `AutoHorn` 进行 **v3.5 Apple 风格视觉与动效全面重构**——打造达到旗舰级水准的**毛玻璃/液态玻璃层次质感**与**丝滑物理弹簧动效体系**，并同步完成全套工程门禁验证与 Spec/ADR 更新。
+
+---
+
+# 执行红线与工程纪律（CRITICAL CONSTRAINTS）
+
+1. **先读 Spec 再改代码**：开工前必须先阅读 `docs/spec/README.md`、`docs/spec/01-system-architecture.md`、`docs/spec/03-ux-interaction-and-haptics.md` 以及 `:core:designsystem`、`:feature:horn`、`:wear` 的现有源码。严禁破坏任何音频零 GC 规则、生命周期防卡音契约及模块依赖边界。
+2. **120fps 零重组性能预算**：所有高频变化的视觉状态（音频 RMS 包络、按钮按压缩放、滑动气压位移、流体环境光呼吸）**必须使用延迟状态读取**（`Modifier.graphicsLayer { ... }`、`Modifier.drawWithCache`、`Modifier.offset { ... }` 或传递 `() -> Float` Lambda），严禁在高频动画中触发 Composable 重组风暴！
+3. **息屏/后台零功耗**：背景环境光动画必须感知 Compose 生命周期，在 `ON_STOP` / 不可见时自动暂停，严禁后台空转耗电。
+4. **测试与低版本绝对安全**：
+   - API 33+ 启用完整 AGSL 液态玻璃高光折射 + 背景模糊；API 31–32 启用 `RenderEffect` 背景模糊；API 26–30 优雅降级为高质感半透明磨砂层 + 镜面描边，绝不崩溃。
+   - 必须通过 `CompositionLocal`（如 `LocalReducedMotion` / `LocalGlassRenderMode`）支持系统“减弱动态效果”无障碍配置，并确保 **Roborazzi + Robolectric 无头 JVM 测试不因 AGSL 或无限动画而卡死或报错**。
+
+---
+
+# Phase 1：`:core:designsystem` 打造 Apple Glass 设计系统与物理动效引擎
+
+所有可复用设计 Token、毛玻璃原语与物理动效组件必须沉淀在 `:core:designsystem` 中（严禁散落硬编码在业务模块）：
+
+1. **Apple 空间与排版规范**：
+   - **同心圆角法则（Concentric Radii）**：严格规范外层容器圆角 `R_outer = R_inner + padding`，消除视觉错位感。
+   - **苹果式清爽排版**：克制的留白层级、柔和次级透明度、**所有动态数值（Hz / ms / dB / xrun）强制启用等宽数字 `fontFeatureSettings = "tnum"`**，杜绝数值跳动时的文字左右抖动。
+   - **5 大车型专属环境光色板（深浅双主题独立精调）**：
+     - 汽车：钛金银 / 深海蓝
+     - 火车：琥珀金 / 熔岩铜
+     - 电车：极光青 / 翡翠绿
+     - 摩托车：竞速红 / 炽热橙
+     - 自定义：星云紫 / 虹彩靛
+
+2. **真实多层毛玻璃 / 液态玻璃组件（`AppleGlassSurface`）**：
+   - **底层真实背景模糊（Backdrop Blur）**：优先基于 Compose `GraphicsLayer` + API 31+ `RenderEffect.createBlurEffect`（或若与当前 `libs.versions.toml` 完全兼容则引入 `dev.chrisbanes.haze`）实现对**背后动态环境光层**的真实背景虚化，而非仅模糊自身前景。
+   - **微颗粒噪点抗色带（Micro-Grain）**：在玻璃层叠加极微弱（1%~2%）程序化噪点纹理，消除 8-bit 渐变色带，赋予真实磨砂光学质感。
+   - **方向性镜面高光描边（Specular Rim Lighting）**：1dp 左上亮、右下柔的线性/扫描渐变高光边缘；在 Android 13+（API 33+）结合 **AGSL `RuntimeShader`** 实现 Liquid Glass 风格的边缘微折射与随触摸/RMS 声压流动的镜面光晕。
+
+3. **会呼吸的流体环境光背景（`AmbientMeshBackground`）**：
+   - 在玻璃层下方绘制缓慢流动的多球柔和 Mesh 光斑背景，随当前选中车型的主题色平滑渐变过渡；鸣笛时由实时 **RMS 声压包络** 驱动光斑柔和膨胀透射过毛玻璃面板，呈现极强的苹果光学纵深感。
+
+4. **全栈物理弹簧动效体系（`AppleMotion`）**：
+   - 统一封装 Apple 风格阻尼弹簧预设（禁止交互态使用生硬线性 `tween`）：
+     - `SnappySpring`（高响应切换，如胶囊滑动、开关切换）
+     - `FluidSpring`（流畅展开，如灵动岛提示、BottomSheet）
+     - `TactileOrbSpring`（带轻微细腻回弹的主按钮物理按压）
+     - `rubberBand(offset, limit)` 经典 iOS 橡皮筋非线性阻尼函数。
+   - 构建 3 个核心 Apple 级通用玻璃组件：
+     - **`GlassSegmentedControl`（流体滑动胶囊选择器）**：内部悬浮一枚带高光描边的玻璃指示胶囊，切换选项时胶囊以弹簧物理丝滑滑移、伴随轻微速度形变并触发细腻触觉刻度（`CLOCK_TICK`）。
+     - **`GlassCapsuleSlider`（iOS 控制中心粗胶囊滑块）**：取代传统细杆 Material Slider，采用半透明圆角玻璃槽 + 丝滑填充条 + 边界橡皮筋微拉伸反馈。
+     - **`DynamicPillBanner`（灵动岛式悬浮状态胶囊）**：顶部居中紧凑悬浮玻璃胶囊，按需以弹簧尺寸形变（`animateContentSize`）丝滑展开/收起系统通知。
+
+---
+
+# Phase 2：`:feature:horn` 主界面、交互与大屏自适应重塑
+
+保持单按钮核心地位与全部现有功能（1.1~3.2）100% 完整，全面焕新视觉与手势丝滑度：
+
+1. **中央触控核心：液态玻璃金属鸣笛球（Tactile Glass Horn Orb）**：
+   - 精密多层构造：外圈同心透明玻璃光晕环 + 磨砂光学玻璃主按钮 + 中心自绘精细矢量车型图标 + 动态镜面高光 + RMS 实时驱动的物理声波涟漪（低频车型涟漪宽厚深沉、高频电车清脆锐利）。
+   - **丝滑按压与表达调制**：按下瞬间弹簧下沉缩放并点亮内部声压辉光；按住上下滑动进行 Expression（气压/音高）调制时，在主球一侧丝滑浮现一枚 **iOS 控制中心风格的竖向毛玻璃进度胶囊**，实时映射调制值并在到达上下限时呈现橡皮筋弹性阻力；松手瞬间平滑回弹归零止音。
+2. **顶部“灵动岛”统一安全与状态胶囊**：
+   - 将 **零音量一键恢复提示**、**耳机佩戴 `-6dB` 护耳保护徽章**、以及当前激活引擎/声场状态优雅收拢至顶部 `DynamicPillBanner`，按优先级以灵动岛式弹簧形变丝滑切换，彻底告别割裂弹窗，保持画面极致纯净。
+3. **底部悬浮毛玻璃控制台**：
+   - 车型切换（5 档）与声场切换（街道/隧道/旷野）升级为精致的 `GlassSegmentedControl`；音量键盲操开关与自定义声学工坊入口以圆润玻璃图标按钮排布，间距遵循同心圆角与视觉对齐规范。
+4. **声学工坊（Pro Sound Lab）毛玻璃抽屉**：
+   - 升级为圆角磨砂玻璃 `ModalBottomSheet`，内部所有参数调节改用 `GlassCapsuleSlider`，数值使用等宽数字 `tnum`，底部固定高质感玻璃试听按压条，拖动滑块与按压试听全程 60/120fps 零卡顿。
+5. **自适应横屏/平板/折叠屏玻璃仪表盘**：
+   - 更新 `WindowSizeClass` 中大屏布局，左侧为层叠有序的毛玻璃控制岛，右侧为悬浮于环境光之上的超大玻璃鸣笛球，确保深浅主题与 200% 无障碍大字体下均零裁切、零重叠。
+
+---
+
+# Phase 3：全生态视觉统一（`:app` Debug HUD / Glance 微件 & `:wear` 手表端）
+
+1. **Debug 专属 DSP 实时示波器（`src/debug`）**：
+   - 保持 Release 零侵入隔离不变，将 Debug 浮层升级为极客范儿的**深色磨砂玻璃透明 HUD**，配合等宽数字（`tnum`）展示延迟/xrun/μs 与丝滑示波器曲线。
+2. **Wear OS 手表端（`:wear`）**：
+   - 统一深色圆屏液态玻璃光环美学与按压弹簧动效，确保圆屏边缘贴合自然。
+3. **Jetpack Glance 桌面微件（`:app`）**：
+   - 优化为圆润通透的毛玻璃卡片质感（符合 Glance API 能力边界，兼容深浅桌面壁纸高对比可读）。
+
+---
+
+# Phase 4：架构文档同步、视觉回归基准刷新与全量门禁验收（必须执行）
+
+1. **同步更新 `docs/spec/` 与追加 ADR**：
+   - 更新 `docs/spec/03-ux-interaction-and-haptics.md`，准确记录全新的 Apple Glass 设计 Token、同心圆角、弹簧物理参数、零重组延迟读取规范以及 API 26–30 / 31–32 / 33+ 三级渲染降级矩阵。
+   - 在 `docs/spec/adr/` 中按 MADR 标准新增一篇 ADR（顺延现有编号，如 `ADR-0008-apple-glass-design-system-and-spring-motion.md`），记录背景模糊实现方案选型（权衡性能、依赖体积与 Robolectric 测试确定性）、延迟状态读取规范及功耗保护权衡。
+2. **刷新 Roborazzi 视觉回归基准与 README 展示图**：
+   - 运行 `./gradlew recordRoborazziDebug` 重新录制全矩阵截图基准（覆盖深浅主题、各车型、横屏大屏、2.0x 大字体），随后运行 `./gradlew verifyRoborazziDebug` 验证 100% 确定性通过。
+   - 将最新最具代表性的高清真实界面截图同步替换更新至 `docs/assets/`，确保根目录 `README.md` 与 `README_EN.md` 的图文展示自动焕新且零死链。
+3. **全量本机门禁验证（必须全部绿灯，0 报错）**：
+   依次执行并修复一切问题：
+   - `./gradlew spotlessApply`
+   - `./gradlew spotlessCheck detekt`
+   - `./gradlew testDebugUnitTest`（含 Konsist 架构守护测试与全部 DSP/ViewModel/Wear 测试）
+   - `./gradlew verifyRoborazziDebug`
+   - `./gradlew lintDebug`（0 Error）
+   - `./gradlew :app:assembleDebug :app:assembleRelease :wear:assembleDebug :wear:assembleRelease`
+   - 若本机已连接真机或模拟器，自动安装 `:app` Debug 包并验证启动无崩溃。
+
+---
+
+# 交付报告要求
+全部门禁绿灯后，请输出精简交付总结：
+1. Apple Glass 渲染分层实现说明（含 API 33+ / 31–32 / 26–30 降级策略与零重组优化点）；
+2. 新增/更新的 `:core:designsystem` 组件与弹簧物理 Token 清单；
+3. 本机全量门禁执行结果、更新后的 Roborazzi 基准图与 `docs/spec/` 新增 ADR 路径。
+
+现在请先阅读 `docs/spec/` 与现有 UI 代码，制定简要改造方案并开始执行！
+
 
 所有任务完成后，自动过ci并push合入
