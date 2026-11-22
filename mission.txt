@@ -434,5 +434,119 @@
 
 现在请先阅读 `docs/spec/` 与现有 UI 代码，制定简要改造方案并开始执行！
 
+# 角色设定
+你是一名 Staff 级 DevOps / Release 工程师兼顶级开源项目维护者，精通 GitHub Actions 安全最佳实践、Android + NDK (C++ Oboe) 多模块 CI 加速、Roborazzi 跨平台视觉回归治理以及企业级 GitHub 协作规范。
+
+# 任务目标
+当前 `AutoHorn` 项目已推送至 GitHub。请先审计本机仓库状态、现有 `.github/` 文件、Gradle 配置与 `docs/spec/`，随后建立一套**达到一线大厂开源标杆水准的 `.github/` 自动化与协作治理体系**（涵盖 CI/CD Workflows、YAML Issue Forms、PR 模板、Dependabot 与贡献治理文档），并在本机完成严格校验。
+
+---
+
+# Phase 0：仓库与远端真实状态审计（严禁硬编码猜测）
+
+动手前必须先实际检查以下内容：
+1. 执行 `git remote -v`，自动提取当前仓库的真实 GitHub `<owner>/<repo>` 名称（若检测到真实地址，后续所有配置文件、徽章、`CODEOWNERS` 均使用真实地址；若未配置远端，则统一使用清晰占位符并在交付报告中列出）。
+2. 检查现有 `.github/` 目录（如已有基础 `ci.yml`，在其基础上进行架构级升级重构，避免产生冲突重复的 Workflow）。
+3. 检查 `gradle/libs.versions.toml`、`settings.gradle.kts`、`:core:audio` 的 NDK/CMake 版本配置、`docs/spec/README.md` 的系统不变量清单，以及确认 `gradlew` 在 Git 索引中具备可执行权限（`git ls-files --stage gradlew` 必须为 `100755`，若不是则执行 `git update-index --chmod=+x gradlew` 修复）。
+
+---
+
+# Phase 1：工业级 GitHub Actions Workflows（`.github/workflows/`）
+
+所有 Workflow 必须遵循以下安全与稳定性铁律：
+- 顶层显式声明最小权限 `permissions: contents: read`，仅在必需的单个 Job 局部提权；
+- 每个 Workflow 配置合理的 `concurrency` 策略（PR/分支推送自动 `cancel-in-progress: true`，`main` 分支与发布 Tag 为 `false`）；
+- 每个 Job 必须设置 `timeout-minutes` 防止僵死 Runner 耗尽额度；
+- 使用 `gradle/actions/setup-gradle@v4` 统一管理 Gradle 缓存与构建摘要，并确保 `ubuntu-latest` 下的 JDK 与 NDK/CMake 版本与本机项目配置一致。
+
+请创建/升级以下 4 个职责清晰的 Workflow：
+
+### 1. `.github/workflows/ci.yml`（核心门禁流水线）
+- **触发条件**：`push` 到 `main`、`pull_request` 到 `main`、`workflow_dispatch`。
+- **并行检查 Job（最大化 CI 速度）**：
+  1. `static-analysis`：执行 `./gradlew spotlessCheck detekt lintDebug`；失败时上传 Lint/Detekt 报告 Artifact。
+  2. `unit-and-arch-tests`：执行全模块 `./gradlew testDebugUnitTest`（覆盖 DSP 声学/性能断言、Konsist 架构守护测试、ViewModel、`:wear`），上传测试报告。
+  3. `visual-regression`：执行 `./gradlew verifyRoborazziDebug`；若失败，自动上传 Roborazzi diff 对比图作为 Artifact，并在 `$GITHUB_STEP_SUMMARY` 中输出清晰的修复指引。
+  4. `release-build-and-size`：执行 `./gradlew :app:assembleRelease :wear:assembleRelease`（验证 C++ Oboe NDK 编译、R8 混淆压缩及 `src/release` 零调试代码隔离）；统计手机端与手表端 Release APK 精确体积（MB/KB）写入 `$GITHUB_STEP_SUMMARY` Markdown 表格，并上传短期保留的构建产物 Artifact。
+  5. `docs-integrity`：轻量校验 `docs/spec/` 与 `README*.md` 的内部相对链接及引用的仓库源码路径是否真实存在（零死链检查）。
+- **单一分支保护聚合门禁 `ci-gate`**：
+  - `needs: [static-analysis, unit-and-arch-tests, visual-regression, release-build-and-size, docs-integrity]`，`if: always()`；
+  - 统一汇总全部前置 Job 状态（仅当全部成功时退出码 0，任一失败或取消则失败），使 GitHub Branch Protection 只需配置 `ci-gate` 一个必过检查项。
+
+### 2. `.github/workflows/release.yml`（SemVer 自动化发版流水线）
+- **触发条件**：推送符合语义化版本的 Tag（`v*.*.*`）或 `workflow_dispatch`。
+- **核心流程**：
+  - 执行全量验证 → 构建 `:app` 与 `:wear` Release APK（及可选 AAB）；
+  - **优雅的密钥签名兼容**：检测是否配置了 GitHub Secrets（`ANDROID_KEYSTORE_BASE64`、`KEYSTORE_PASSWORD`、`KEY_ALIAS`、`KEY_PASSWORD`）——若已配置则自动签名，若尚未配置则安全降级产出未签名 Release 包并在 Release Notes 中明确标注，确保首次打 Tag 绝不因缺少密钥而失败；
+  - 自动生成 `checksums.txt`（SHA-256 校验值）；
+  - 自动创建 GitHub Release，上传 APK 与 `checksums.txt`，并启用自动分类变更日志（配合 `.github/release.yml`）。
+
+### 3. `.github/workflows/pr-hygiene.yml`（PR 规范与自动标签）
+- 校验 PR 标题严格符合 **Conventional Commits** 规范（支持 `feat|fix|perf|refactor|ui|audio|docs|test|build|ci|chore` 及可选 Scope 如 `feat(audio): ...`）。
+- 集成 `actions/labeler@v5`（严格采用 **v5 新版配置语法**），按改动模块路径自动为 PR 贴上精准领域标签。
+
+### 4. `.github/workflows/update-screenshots.yml`（Roborazzi 云端基准录制助手）
+- **解决痛点**：本地 macOS/Windows 与 GitHub `ubuntu-latest` 存在系统字体光栅化差异时，开发者无需自己配 Linux 环境。
+- **触发条件**：仅手动 `workflow_dispatch`（可选输入分支名）。
+- **核心流程**：在 `ubuntu-latest` 上执行 `./gradlew recordRoborazziDebug`，将生成的 Linux 标准 Roborazzi 基准图打包为 Artifact 上传（并支持在 PR 分支场景下按需提示下载覆盖提交），确保视觉回归测试跨平台 100% 稳定。
+
+---
+
+# Phase 2：现代化 YAML Issue Forms 与工业级 PR 模板
+
+### 1. `.github/ISSUE_TEMPLATE/`（全面采用 GitHub YAML Issue Forms，严禁使用过时纯 Markdown 模板）
+- **`config.yml`**：设置 `blank_issues_enabled: false`，并提供指向 `docs/spec/` 架构规约与安全漏洞反馈渠道的快捷入口。
+- **`01-bug-report.yml`（通用 Bug 报告）**：
+  - 结构化下拉与必填字段：受影响端（Phone App / Wear OS / Glance Widget / Quick Tile / 构建与 CI）、设备型号与 Android API 版本（API 26–36）、复现步骤、预期行为 vs 实际行为、崩溃堆栈/截图、预检勾选框。
+- **`02-audio-dsp-issue.yml`（声学/延迟/爆音专项诊断表）**：
+  - 专为实时音频引擎定制：异常现象下拉（爆音咔哒声 / 音频断流 xrun / 削波破音 / 响度失衡 / 退后台卡音 / 耳机护耳限幅异常）、音频输出链路（扬声器 / 有线耳机 / 蓝牙耳机）、车型与声场模式、激活引擎（`Oboe C++` / `AudioTrack JVM`）、Debug 示波器 HUD 遥测数值（延迟 ms / xrun 计数）。
+- **`03-feature-request.yml`（新功能 / 新车型音色提案）**：
+  - 分类选择（新车型音色 / Apple Glass UI 与动效 / 声学 DSP / Wear OS 与生态 / DX 工程效能）、使用场景与动机（契合项目克制极简的单按钮理念，若提议新音色需描述声学特征）。
+- **`04-spec-adr-proposal.yml`（架构规约与 ADR 变更提案）**：
+  - 面向贡献者提议修改 `docs/spec/` 不变量或发起新 MADR 决策记录，包含背景、权衡备选方案与向后兼容性评估。
+
+### 2. `.github/PULL_REQUEST_TEMPLATE.md`（与项目系统不变量强绑定）
+必须结构化包含：
+- **变更摘要与关联 Issue**（`Closes #`）；
+- **变更类型勾选**（Audio DSP / Apple Glass UI / Wear OS / Glance / Spec & ADR / CI & DX / Bug Fix）；
+- **视觉与声学自证区**：UI 改动提供 Before/After 截图或 Roborazzi 差异说明；音频改动提供 DSP 指标/示波器验证说明；
+- **AutoHorn 核心不变量红线自检清单**（直接对应本机 `docs/spec/README.md` 真实条款）：
+  - [ ] 音频回调线程严格保持零内存分配（Zero-GC）与无锁同步；
+  - [ ] 退后台、失焦、手势取消等场景下的防“卡音”安全契约未被破坏；
+  - [ ] 高频动效与 RMS 视觉读取遵循延迟读取原则（零重组风暴，后台自动停播环境光）；
+  - [ ] Release 构建零 Debug 示波器/调试代码泄露；
+  - [ ] 若变更了模块契约或关键决策，已同步更新 `docs/spec/` 或追加 MADR ADR；
+- **本地门禁执行清单**（列出准确 Gradle 验证命令勾选框）。
+
+---
+
+# Phase 3：开源工程治理与自动化配套文件
+
+1. **`.github/dependabot.yml`**：
+   - 监控根目录 `gradle`、`build-logic`（若为独立目录）以及 `github-actions` 依赖更新；
+   - 按周定时检查并启用 **Grouped Updates（分组聚合更新）**（如 Kotlin/Compose/AndroidX/Testing 分组），限制同时打开的 PR 数量（`open-pull-requests-limit: 5`），避免 PR 轰炸。
+2. **`.github/labeler.yml`**：严格采用 `actions/labeler@v5` 语法（`changed-files` -> `any-glob-to-any-file`），按模块自动标记 `area:audio-dsp`、`area:ui-glass`、`area:wear-os`、`area:widget-tile`、`area:dx-ci`、`area:docs-spec`、`area:build-logic`。
+3. **`.github/release.yml`**：配置 Release Notes 自动分类规则（🔊 音频引擎与声学、✨ Apple Glass UI 与动效、⌚ Wear OS 与生态、🐛 问题修复、🛠️ 工程效能与 DX、📚 规约与文档、忽略 `dependencies` 杂项刷屏）。
+4. **`.github/CODEOWNERS`**：按模块配置代码评审归属（使用 Phase 0 探测到的真实 GitHub 用户名）。
+5. **根目录治理文档**：
+   - **`CONTRIBUTING.md`**：精炼务实的贡献者指南——环境准备、分支与 Conventional Commits 规范、本地开发与门禁命令、如何新增车型音色、如何提交 Roborazzi 基准图与 ADR。
+   - **`SECURITY.md`**：简洁规范的安全漏洞披露政策与支持版本说明。
+6. **文档联动更新**：
+   - 若 `README.md` / `README_EN.md` 中仍残留占位符仓库路径，顺手替换为 Phase 0 探测到的真实 GitHub 仓库路径（确保徽章立即可用）；
+   - 同步更新 `docs/spec/05-dx-quality-and-ci.md`，确保 CI/CD 规约与新落地的多 Workflow 体系 100% 一致。
+
+---
+
+# Phase 4：严格本地语法与命令验证（必须实际执行）
+
+全部文件生成完毕后，请在本机依次完成以下检查并修复所有发现的问题：
+1. **YAML 严格语法校验**：使用 Python `yaml.safe_load`（或本机已安装的 `actionlint`）逐一解析校验 `.github/` 下的全部 `.yml`/`.yaml` 文件，确保 0 语法错误、0 缩进错误、0 无效字段。
+2. **Git 权限检查**：确认 `gradlew` 在 Git 索引中权限为 `100755`。
+3. **CI 命令本地实测核对**：核实 `ci.yml` 中调用的每一条 `./gradlew` 命令与当前工程真实任务完全匹配，并运行 `./gradlew spotlessCheck detekt testDebugUnitTest verifyRoborazziDebug` 确认当前分支全部绿灯。
+4. **输出落地交付报告**：
+   - 完整列出 `.github/` 与根目录新增/更新的文件树；
+   - 给出**GitHub 网页端 3 步推荐配置清单**（如何在 `Settings -> Branches` 启用 `ci-gate` 分支保护、如何可选配置 Release 签名 Secrets、若首次 CI 因跨系统字体差异触发 Roborazzi 失败时如何一键点运行 `update-screenshots.yml`）。
+
+现在请从 **Phase 0 仓库与远端审计** 开始执行！
 
 所有任务完成后，自动过ci并push合入
