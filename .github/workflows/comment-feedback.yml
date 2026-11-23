@@ -51,6 +51,9 @@ jobs:
         uses: actions/github-script@v7
         env:
           COMMENT_REACTION_EMOJIS: ${{ vars.COMMENT_REACTION_EMOJIS }}
+          DISPATCH_COMMENT_ID: ${{ inputs.comment_id }}
+          DISPATCH_EMOJI: ${{ inputs.emoji }}
+          DISPATCH_DRY_RUN: ${{ inputs.dry_run }}
         with:
           script: |
             // GitHub's reaction API accepts exactly these content values.
@@ -63,22 +66,24 @@ jobs:
               .filter((value) => ALLOWED.includes(value));
             const palette = configured.length > 0 ? configured : DEFAULT_PALETTE;
 
-            const commentId = Number(
-              context.payload.comment?.id ?? core.getInput('comment_id', { required: true }),
-            );
+            // workflow_dispatch inputs arrive through the step env (github-script's `with:` is
+            // not exported as INPUT_*), issue_comment arrives through the payload.
+            const commentId = Number(context.payload.comment?.id ?? process.env.DISPATCH_COMMENT_ID);
             if (!Number.isFinite(commentId) || commentId <= 0) {
               core.setFailed(`invalid comment id: ${commentId}`);
               return;
             }
 
-            const forced = (core.getInput('emoji') || '').trim();
+            const forced = (process.env.DISPATCH_EMOJI || '').trim();
             if (forced && !ALLOWED.includes(forced)) {
               core.setFailed(`unsupported reaction "${forced}"; allowed: ${ALLOWED.join(', ')}`);
               return;
             }
             const emoji = forced || palette[commentId % palette.length];
             const dryRun =
-              context.eventName === 'workflow_dispatch' ? core.getBooleanInput('dry_run') : false;
+              context.eventName === 'workflow_dispatch'
+                ? String(process.env.DISPATCH_DRY_RUN ?? 'true') !== 'false'
+                : false;
 
             // Idempotency: a re-run (or a duplicated delivery) must not stack reactions.
             const existing = await github.paginate(github.rest.reactions.listForIssueComment, {
