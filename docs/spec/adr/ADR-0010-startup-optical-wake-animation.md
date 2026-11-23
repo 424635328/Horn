@@ -1,6 +1,6 @@
 # ADR-0010: 开屏动画 Optical Wake —— 单时钟 f(t) 自绘 + core-splashscreen 无缝交棒
 
-- 状态：Accepted（v4.0 材质更新见 [ADR-0011](ADR-0011-precision-automotive-cockpit.md)）
+- 状态：Accepted（机制不变；v4.0 材质见 [ADR-0011](ADR-0011-precision-automotive-cockpit.md)，v4.1 视觉词汇见 §附录）
 - 日期：2026-11-22
 
 > **v4.0 更新说明**：本决策的**机制**（单时钟 f(t)、闩锁、可跳过、无缝 Splash 交棒、零重组）
@@ -8,6 +8,22 @@
 > `docs/spec/03 §11`）。因此下文对 AGSL/`GlassCapabilities`/`AppleMotion` 的引用属于历史记录，
 > 现行实现见 `core/designsystem/src/main/java/com/industrial/horn/ui/theme/StartupWake.kt`、
 > `Motion.kt` 与 `feature/horn/src/main/java/com/industrial/horn/ui/StartupOverlay.kt`。
+
+## 附录：v4.1 视觉词汇修订（2026-11-23）
+
+v4.0 只换了材质，画面仍然「一个表盘淡入 + 一次淡出」，没有满足启动动画方法论里的 boot 序列词汇，
+也不符合「字距不做动画」「交棒用遮片合拢」两条纪律。v4.1 修订仅限**画面与实现纪律**，时间轴总长、
+四幕边界、560 触觉、820 闩锁、1040 结束、120ms 跳过全部不变：
+
+1. 补齐 boot 词汇：扫描线底、四角 reticle、三行 boot 日志（180/480/780ms）、静态序列标记、
+   底部同步条（含 820ms 闩锁刻度）、48 段慢转虚线环、12 路声压喷口。
+2. 字标改为**静态 6sp 字距 + `clipRect` 擦除入场**；删除逐帧字距动画（它会逐帧触发文本重排）。
+3. 交棒由「scale 1.04 + 淡出」改为**上下遮片沿表盘轴线合拢 + 1dp 接缝 + 中线收窄 + 一次性闪白**；
+   覆盖层淡出推迟到 980–1040ms，让遮片完成真正的交接。
+4. 性能与证据：帧间隔自报（`StartupFrameMeter`，debug 构建输出 median/p95/slow）；
+   `StartupTimelineTest` 锁定 12 个里程碑端点与单调性；定格帧从 3×2 扩为 **4 帧×2 主题**
+   （wake/focus/reveal/shutter）。
+5. 详细公式与词汇表见 `docs/spec/03 §11.1 / §11.1.1 / §11.7 / §11.8`。
 
 ## 背景与问题
 

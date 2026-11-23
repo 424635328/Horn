@@ -39,7 +39,7 @@
 | I7 | 高频视觉状态（RMS 包络、按压行程、滑动气压位移、扫描带相位）MUST 以延迟读取（`graphicsLayer`/`drawWithCache`/`() -> Float`）驱动，禁重组风暴 | 代码评审 + 座舱组件契约（§5.6） | `core/designsystem/src/main/java/com/industrial/horn/ui/theme/` |
 | I8 | 空闲态 MUST 帧静止：不得存在无人观看的无限动画；鸣笛期动画 MUST 生命周期门控（息屏/后台零功耗） | 代码评审 + `CockpitCanvas` 契约 + Roborazzi 帧稳定性 | `core/designsystem/src/main/java/com/industrial/horn/ui/theme/CockpitCanvas.kt` |
 | I9 | 手机与手表 MUST 共享同一 `applicationId`，跨端协议 MUST 可脱 Play Services 离线单测 | `WearProtocolTest` | `core/data/src/main/java/com/industrial/horn/data/WearProtocol.kt` |
-| I10 | UI 视觉基准（80 张主界面 + 6 张开屏 + 6 张仪表状态帧）MUST 100% 确定性通过；跨平台差异 MUST 走 Linux 重录 SOP | `verifyRoborazziDebug` 门禁 | `app/src/test/screenshots/` |
+| I10 | UI 视觉基准（80 张主界面 + 8 张开屏 + 6 张仪表状态帧）MUST 100% 确定性通过；跨平台差异 MUST 走 Linux 重录 SOP | `verifyRoborazziDebug` 门禁 | `app/src/test/screenshots/` |
 | I11 | 立体声 MUST 单声道折叠安全：L+R 折叠能量损失 < 3 dB（全场景 × 全输出模式已断言）；200 Hz–2 kHz 1/6 倍频带陷波 < 6 dB（STREET 1.22 / OPEN_ROAD 2.84 达标；**TUNNEL 7.82 / GARAGE 7.65 未达标**，由棘轮阈值 8.0 / 7.9 dB 锁住不回退，见交付报告 §7） | `QaFoldBudgetTest`（折叠断言 + 陷波达标/棘轮） | `core/audio/src/test/java/com/industrial/horn/audio/QaFoldBudgetTest.kt` |
 | I12 | 参数平滑防拉链：一切控制参数（type/space 交叉淡化、expression、护耳增益、custom 滑块、输出模式）MUST 经一阶平滑后才触及增益或系数 | `OnePoleSmoother` 契约 + 代码评审 | `core/audio/src/main/java/com/industrial/horn/audio/dsp/OnePoleSmoother.kt` |
 | I13 | 防次正规数：C++ FTZ（FPCR Flush-to-Zero）与双端块级零吸附策略 MUST 一致（Kotlin 端零吸附 + DC 偏置） | 冻结契约 §2 红线 + 双端 QA 对拍 | `docs/spec/research/00-stereo-pipeline-contract.md` |

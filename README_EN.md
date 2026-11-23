@@ -150,7 +150,7 @@ flowchart LR
 | Spotless + ktlint 1.8.0 | `spotlessApply` for one-key formatting, `spotlessCheck` to catch slips |
 | Detekt 1.23.8 | Static analysis, zero errors, config in `config/detekt/detekt.yml` |
 | Konsist 0.17.3 | Architecture firewall: module boundaries, ViewModel placement, no mutable globals in the audio module |
-| Roborazzi 1.79.0 | 5 voices × 2 themes × 2 locales × 2 font scales × 2 layouts = **80** pixel-level baselines + 6 frozen startup frames + 6 instrument-state frames (pressure ring lit, needle deflected) |
+| Roborazzi 1.79.0 | 5 voices × 2 themes × 2 locales × 2 font scales × 2 layouts = **80** pixel-level baselines + 8 frozen startup frames (wake / focus / reveal / shutter) + 6 instrument-state frames (pressure ring lit, needle deflected) |
 | Baseline Profiles | `:baselineprofile` generates cold-start / voice-switch / honk critical-path profiles on a real device |
 | Skills integrity gate | `check_skills.py`: structure, frontmatter, sanitization, relative links and byte-exact `manifest.sha256` verification, with positive and negative controls |
 | GitHub Actions | 5 parallel check jobs + single `ci-gate` aggregator + APK size tracking |
