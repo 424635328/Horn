@@ -252,12 +252,12 @@ v4.0 显式移除毛玻璃与背景虚化：视觉不再依赖 `RuntimeShader`/`
   `fontFeatureSettings = "tnum"`，即使字体回退也保持等宽数字。
 - Roborazzi 基准对系统字体光栅化敏感，跨平台差异 MUST 走 `update-screenshots.yml` Linux 重录 SOP（见 05 规约）。
 
-## 11. 开屏动画与启动体验（Cold-Start Calibration, v4.0；原 Optical Wake v3.7）
+## 11. 开屏动画与启动体验（Cold-Start Calibration, v4.1；原 Optical Wake v3.7）
 
-> 关联决策：[ADR-0010 开屏动画 Optical Wake：单时钟自绘与无缝交棒](adr/ADR-0010-startup-optical-wake-animation.md)、
-> [ADR-0011 精密汽车座舱](adr/ADR-0011-precision-automotive-cockpit.md)（v4.0 只改材质与构图，时间轴不变）。
-> 冷启动一次性品牌时刻：机加工表盘剪影唤醒 → 刻度环与表圈扫入 → 声压弧绽放 → 无缝融入主界面；
-> v4.0 起表盘用座舱材质（车削盘面 + 60 格刻度 + 四角卡尺），不再有玻璃球与毛玻璃质感。
+> 关联决策：[ADR-0010 开屏动画：单时钟自绘与无缝交棒](adr/ADR-0010-startup-optical-wake-animation.md)、
+> [ADR-0011 精密汽车座舱](adr/ADR-0011-precision-automotive-cockpit.md)（v4.0 换材质，v4.1 换视觉词汇）。
+> 冷启动一次性品牌时刻：扫描线底 + 四角 reticle + boot 日志 + 表盘点亮 + 刻度与雷达环扫入 + 光标式字标
+> 擦除 + **上下遮片合拢的中线交棒**。它是一段「仪器开机自检」，不是 logo 动画。
 
 ### 11.1 四幕时间轴（单时钟 t = elapsed ms）
 
@@ -265,25 +265,47 @@ v4.0 显式移除毛玻璃与背景虚化：视觉不再依赖 `RuntimeShader`/`
 
 | 时刻 | 阶段 | 元素 | 入出公式 |
 | --- | --- | --- | --- |
-| 0–160 | WAKE 唤醒 | 表盘剪影 | `scale = 0.62 + 0.10·smoothstep(0, 160, t)`（0.62→0.72）；`alpha = smoothstep(0, 160, t)`（0→1，smoothstep 段） |
-| 160–500 | FOCUS 聚焦 | 60 格刻度顺时针扫入（两段错峰 60ms） | `ring_k = smoothstep(160+60k, 460+60k, t)`，k ∈ {0,1}（刻度环 160→460、表圈弧 220→520） |
-| 160–500 | FOCUS 聚焦 | 表圈高光弧扫过 | `focus = smoothstep(160, 500, t)` 驱动一段 34° 高光弧沿表圈旋转（不在盘面打光带） |
-| 160–500 | FOCUS 聚焦 | 工程网格 + 品牌暖光晕渗入 | 渗入进度 `wash = smoothstep(160, 500, t)`；暖光晕取该主题 Car 强调色（浅色 `#A85B00` / 深色 `#FFB547`） |
+| 0–160 | WAKE 唤醒 | 表盘剪影 + 四角 reticle | `scale = 0.62 + 0.10·smoothstep(0, 160, t)`；`alpha = smoothstep(0, 160, t)`；`reticle = smoothstep(0, 220, t)`（臂长 26dp × reticle） |
+| 160–300 | FOCUS 聚焦 | boot 日志逐行浮现 | `line_k = smoothstep(180+300k, 320+300k, t)`，k ∈ {0,1,2}（180/480/780 ms 起） |
+| 160–500 | FOCUS 聚焦 | 60 格刻度顺时针扫入 | `ring = smoothstep(160, 460, t)`，可见格数 `⌊ring × 60⌋`；每 5 格加长、每 15 格强调色 |
+| 160–500 | FOCUS 聚焦 | 雷达虚线环旋转 | `dash = smoothstep(160, 500, t)` 控制出现；`rotation = 0.010·(t − 160)°`（慢速，非装饰性抖动） |
+| 160–560 | FOCUS 聚焦 | 斜向光扫横穿一次 | `scan = smoothstep(160, 560, t)`；光带位移 `x = (−0.45 + 1.9·scan)·W`，alpha `1 − |0.5 − scan|·1.2` |
+| 160–500 | FOCUS 聚焦 | 表圈高光弧 + 十字准星 | `focus = smoothstep(160, 500, t)` 驱动 34° 高光弧旋转；准星臂长 1.58R→1.78R |
 | 500–820 | BLOOM 绽放 | 表盘落位 | `scale = 0.72 + 0.28·settle(smoothstep(500, 820, t))`（同源欠阻尼微过冲 ≈12%，精确落位 1.0） |
-| 500–820 | BLOOM 绽放 | 双强调声压弧 | `arcPhase = ((t-500)/260) % 1`（%1 相位循环；双弧相位差 0.5 反相发射） |
-| 500–820 | BLOOM 绽放 | 校准点 ×3 | `glint_i = smoothstep(t_i, t_i+60, t) × (1 - smoothstep(t_i+120, t_i+260, t))`，`t_i = 520+85i` ms（i ∈ {0,1,2}） |
-| 500–820 | BLOOM 绽放 | 品牌字标字距落定 | `tracking = tracking_end + Δ·(1 - settle(bloom))`（字距沿 settle 曲线收敛落定；字标位于表盘下方 132dp，绝不压在盘面上） |
+| 500–820 | BLOOM 绽放 | 12 路声压喷口 | `ventPhase = ((t−500)/260) % 1`，第 k 路相位 `(ventPhase + k/12) % 1`，半径 `1.27R → 1.61R`，alpha `(1−p)·0.45` |
+| 500–820 | BLOOM 绽放 | 校准点 ×3 | `glint_i = smoothstep(t_i, t_i+60, t) × (1 − smoothstep(t_i+120, t_i+260, t))`，`t_i = 520+85i` |
+| 540–820 | BLOOM 绽放 | 字标擦除入场 | `reveal = smoothstep(540, 820, t)`；`clipRect(right = W·reveal)` 擦除 + 18dp 上浮；**字距静态 6sp，禁做动画** |
 | t=560 | BLOOM 绽放 | 轻触觉 ×1 | 单次轻触觉脉冲（`HAPTIC_MS = 560`；无马达/系统触觉关闭 → 静默降级） |
 | 820–1040 | MERGE 融合 | reveal 闩锁 | t=820 一次性发出；主界面自转场下层接棒、错峰 40ms `KeySpring` 浮现 |
-| 820–1040 | MERGE 融合 | 覆盖层退场 | `scale = 1 + 0.04·smoothstep(820, 1040, t)`（1.0→1.04）；`alpha = 1 - smoothstep(820, 1040, t)`；t=1040 彻底移出组合树 |
+| 820–1000 | MERGE 融合 | 上下遮片向表盘轴线合拢 | `shutter = smoothstep(820, 1000, t)`；上片高 `(0.42H − gap)·shutter`、下片高 `(0.58H − gap)·shutter`，边缘 1dp 接缝 + 12dp 内阴影 |
+| 930–1040 | MERGE 融合 | 一次性闪白 | `flash = smoothstep(930, 985, t) × (1 − smoothstep(985, 1040, t))`，叠加 `accent@12%` |
+| 1000–1040 | MERGE 融合 | 中线收窄 + 覆盖层淡出 | `line = 1 − smoothstep(1000, 1040, t)`；中线半宽 `0.26W·(1 − 0.55·shutter)·line`；`alpha = 1 − smoothstep(980, 1040, t)`；t=1040 彻底移出组合树 |
 
 公式语义（全部为 t 的纯函数，禁 setTimeout/多时钟排程）：
 
 - `smoothstep(a, b, x) = s²(3-2s)`，其中 `s = clamp((x-a)/(b-a), 0, 1)`——全片唯一缓动原语（C¹ 连续段）。
 - `settle(p)`：确定性解析欠阻尼阶跃（ζ=0.55、ω=9，与 `KeySpring` 同源的机加工手感），微过冲后精确收敛 1.0；
   属里程碑曲线推导，不引缓动库。
-- `% 1`：相位循环取小数部分（声压弧发射节律）。
-- 时间轴常量（1040/160/500/820/560/120/40）单点集中于 `StartupTimeline`（`core/designsystem/src/main/java/com/industrial/horn/ui/theme/StartupWake.kt`）。
+- `% 1`：相位循环取小数部分（声压喷口发射节律）。
+- 时间轴常量（1040/160/500/820/560/120/40/1000/930/985/980）单点集中于 `StartupTimeline`（`core/designsystem/src/main/java/com/industrial/horn/ui/theme/StartupWake.kt`）。
+
+### 11.1.1 视觉词汇（boot 序列）
+
+| 元素 | 规格 | 为什么 |
+| --- | --- | --- |
+| 扫描线底 | 每 3dp 一条 1px 横线，透明度 0.04–0.05 | 让整屏读作「显示器」而不是「壁纸」 |
+| 四角 reticle | 26dp 内缩、26dp 臂长、1.2dp 描边，左上角一个强调色刻度 | 取景器/仪表的固定语法，同时给出画面边界 |
+| boot 日志 | 等宽 9sp、字距 2sp、三行错峰 300ms，公开事实（`ACOUSTIC CORE` / `48 kHz · 2CH` / `DIAL 60`） | HUD 叙事；不使用任何无法核实的「系统消息」 |
+| 序列标记 | 右上 `SEQ 1.04 s` 静态文本 | 时间码若逐帧刷新会不停触发布局；静态令牌同样传达「一段固定流程」 |
+| 同步进度条 | 底部 168dp，1px 轨 + 强调填充 + 820ms 闩锁刻度 | 把「还有多久可以操作」可视化，替代不可读的百分比 |
+| 雷达虚线环 | 48 段、1px、强调色 22%、`0.010°/ms` 慢速旋转 | 静态刻度 + 慢旋转＝「在扫描」，不引入噪声粒子 |
+| 字标 | 26sp 粗体、字距 6sp 静态、`clipRect` 擦除、下挂 96dp 强调细线 | 字距动画会逐帧重排版，属明确禁止项（见 skill 的「字距不做动画」） |
+| 交棒 | 上下遮片合拢（表盘轴线）+ 1dp 接缝 + 12dp 内阴影 + 中线收窄 + 一次性闪白 | 「关机/合拢再交棒」比淡出更像机械动作，也避免与主界面争抢注意力 |
+
+### 11.1.2 降级（reduce motion）
+
+- 系统动画时长为 0 或 `LocalReducedMotion` 为真：`StartupCoordinator` 直接 `Bypassed(REDUCED_MOTION)`，覆盖层不出现。
+- 覆盖层内部同样有兜底：`LocalReducedMotion` 为真时以 `t = TOTAL_MS` 渲染（终态静态帧），不启动内部时钟，也不播放任何动画。
 
 ### 11.2 点击跳过契约
 
@@ -345,18 +367,24 @@ flowchart TD
 - 单时钟：一切视觉 = f(t)（t = elapsed ms 唯一时钟）；MUST NOT 以 setTimeout/多动画时钟排程。
 - 延迟读取（I7）：`elapsedProvider: () -> Float` 在 `DrawScope`/`graphicsLayer` 内读取，动画帧只重绘零重组；
   `rememberUpdatedState` 保持 Provider 新鲜而稳定。
-- 预计算一次：渐变、噪点、星芒等逐帧素材以 `remember` 一次预计算（如 `WakeSceneBrushes`），逐帧零分配。
-- 文字节流：UI 文字/读数 ≤60ms 一次更新。
+- 预计算一次：扫描线 Path、渐变、三角函数表等逐帧素材以 `remember`/`CacheDrawScope` 一次预计算
+  （`WakeSceneBrushes`），逐帧零分配。
+- **文字零动画**：字标字距静态（擦除用 `clipRect`），boot 日志只改图层 alpha；覆盖层内没有逐帧排版的文本，
+  因此「文字 ≤60ms」规则在此退化为「零文本重排」。
 - 移出组合树（I8 同族）：`Completed`/`Skipped`/`Bypassed` 后覆盖层 MUST 彻底移出组合树，不留图层、不留无限动画。
 - 测试注入：冻结时钟经 `elapsedProvider` 注入，任意时刻定格可复现（scrub/Roborazzi 免费）。
+- **指标自报**：debug 构建在动画完成时输出 `startup frames: n / median / p95 / slow(>33.4ms)`
+  （`StartupFrameMeter`，环形缓冲零分配；release 不输出、不落日志）。「流畅」不是结论，这行日志才是。
 
 ### 11.8 测试与 Roborazzi 隔离
 
 - 状态机 100% 覆盖：Playing→Completed、Playing→Skipped（`skip()` 幂等重放）、旋转不重播（WARM_START）、
   QUICK_ACTION 绕过（0ms 直达）、REDUCED_MOTION 绕过、优先级 QUICK_ACTION > WARM_START > REDUCED_MOTION。
 - Compose UI 测试：任意区域按下即跳过的语义；跳过后 `horn_button` 可交互（零遮罩残留）。
-- Roborazzi 定格帧：t=300 / 650 / 900 × 深浅双主题，冻结时钟注入保证逐字节确定性。
-- 既有 80 张基准不受影响：开屏覆盖层挂载于 `app/src/main/java/com/industrial/horn/MainActivity.kt` 层，
+- Roborazzi 定格帧：**wake(120) / focus(300) / reveal(820) / shutter(920)** × 深浅双主题 = **8 帧**，
+  冻结时钟注入保证逐字节确定性（`startup_wake_*` 命名空间）。
+- 时间轴契约测试：`StartupTimelineTest` 断言各里程碑端点、单调性与闩锁前后关系（防止「小调」悄悄挪动时间轴）。
+- 既有 80 张主界面基准不受影响：开屏覆盖层挂载于 `app/src/main/java/com/industrial/horn/MainActivity.kt` 层，
   HornScreen 截图天然隔离（I10 零回归）。
 
 ### 11.9 Non-Goals

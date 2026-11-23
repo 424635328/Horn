@@ -5,10 +5,14 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.unit.dp
 import kotlin.math.PI
+import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.exp
 import kotlin.math.min
@@ -20,13 +24,18 @@ import kotlin.math.sqrt
  * clock — no per-element scheduling — so any frame can be reproduced, scrubbed or snapshotted.
  * Frozen milestones (milliseconds):
  *
- *  0–160   WAKE   : instrument silhouette 0.62 → 0.72, opacity 0 → 1
- *  160–500  FOCUS  : caliper crosshair extends, 60 graduations sweep in clockwise (60 ms
- *                    stagger), specular pass over the bezel
- *  500–820  BLOOM  : dial settles to 1.0 with a damped overshoot, two accent pressure arcs emit,
- *                    three calibration points flash, wordmark settles; one light haptic at 560
- *  820–1040 MERGE  : the reveal latch fires once at 820 (main UI takes over underneath) and the
- *                    overlay scales 1.0 → 1.04 while fading out; it then leaves composition
+ *  0–160   WAKE   : instrument silhouette 0.62 → 0.72, opacity 0 → 1, corner reticle draws in
+ *  160–500  FOCUS  : 60 graduations sweep in clockwise (60 ms stagger), one diagonal light sweep,
+ *                    the dashed HUD ring starts turning, the caliper crosshair extends
+ *  500–820  BLOOM  : dial settles to 1.0 with a damped overshoot, four symmetric pressure arcs
+ *                    emit, three calibration points flash, the wordmark wipes in; one light
+ *                    haptic at 560
+ *  820–1040 MERGE  : shutters close vertically onto a shrinking centre line, one flash, and the
+ *                    residual layer fades last; the reveal latch fires once at 820 so the main
+ *                    UI rises underneath
+ *
+ * The vocabulary is deliberately that of a boot sequence (scanlines, reticle, boot log, timecode,
+ * sync arc): a calibration instrument switching on reads as "powering up", not as a logo sting.
  */
 object StartupTimeline {
     const val TOTAL_MS = 1040f
@@ -38,6 +47,15 @@ object StartupTimeline {
     const val HAPTIC_MS = 560f
     const val SKIP_COLLAPSE_MS = 120f
     const val CONSOLE_STAGGER_MS = 40f
+    const val SHUTTER_END_MS = 1000f
+    const val FLASH_START_MS = 930f
+    const val FLASH_PEAK_MS = 985f
+    const val FADE_START_MS = 980f
+
+    /** Boot log: three lines, 300 ms apart, each fading in over 140 ms. */
+    const val BOOT_LINE_COUNT = 3
+    const val BOOT_LINE_START_MS = 180f
+    const val BOOT_LINE_STEP_MS = 300f
 
     fun wakeAlpha(t: Float): Float = smoothstep(0f, WAKE_END_MS, t)
 
@@ -54,9 +72,8 @@ object StartupTimeline {
 
     fun mergeProgress(t: Float): Float = smoothstep(BLOOM_END_MS, MERGE_END_MS, t)
 
-    fun overlayAlpha(t: Float): Float = 1f - mergeProgress(t)
-
-    fun overlayScale(t: Float): Float = 1f + 0.04f * mergeProgress(t)
+    /** Whole-overlay opacity: the shutters hand off first, the residual layer fades last. */
+    fun overlayAlpha(t: Float): Float = 1f - smoothstep(FADE_START_MS, MERGE_END_MS, t)
 
     /** Dial scale: wake ramp, then a spring-settled bloom to full size. */
     fun orbScale(t: Float): Float =
@@ -66,7 +83,7 @@ object StartupTimeline {
             0.72f + 0.28f * settle(bloomProgress(t))
         }
 
-    /** Pressure-arc phase loop (%1) used by the two accent emission arcs. */
+    /** Pressure-arc phase loop (%1) used by the four symmetric emission arcs. */
     fun pressurePhase(t: Float): Float = (((t - FOCUS_END_MS) / 260f) % 1f + 1f) % 1f
 
     /** Calibration-point flashes, one window per point. */
@@ -77,6 +94,39 @@ object StartupTimeline {
         val start = 520f + index * 85f
         return smoothstep(start, start + 60f, t) * (1f - smoothstep(start + 120f, start + 260f, t))
     }
+
+    /** Corner reticle brackets draw themselves in during WAKE. */
+    fun reticleProgress(t: Float): Float = smoothstep(0f, 220f, t)
+
+    /** Diagonal light sweep: traverses the screen once during FOCUS. */
+    fun scanProgress(t: Float): Float = smoothstep(WAKE_END_MS, 560f, t)
+
+    /** Dashed HUD ring rotates slowly once the dial is awake (degrees). */
+    fun dialRotation(t: Float): Float = if (t <= WAKE_END_MS) 0f else (t - WAKE_END_MS) * 0.010f
+
+    /** Horizontal wipe that reveals the wordmark during BLOOM. */
+    fun wordmarkReveal(t: Float): Float = smoothstep(540f, BLOOM_END_MS, t)
+
+    /** One boot-log line fades in at 180 / 480 / 780 ms. */
+    fun bootLineAlpha(
+        t: Float,
+        index: Int,
+    ): Float {
+        val start = BOOT_LINE_START_MS + index * BOOT_LINE_STEP_MS
+        return smoothstep(start, start + 140f, t)
+    }
+
+    /** Calibration progress (0..1) for the sync arc and the bottom bar. */
+    fun progress(t: Float): Float = (t / TOTAL_MS).coerceIn(0f, 1f)
+
+    /** Vertical shutters: close from the top and bottom onto the centre line. */
+    fun shutterProgress(t: Float): Float = smoothstep(BLOOM_END_MS, SHUTTER_END_MS, t)
+
+    /** One-shot flash as the shutters meet. */
+    fun flashAlpha(t: Float): Float = smoothstep(FLASH_START_MS, FLASH_PEAK_MS, t) * (1f - smoothstep(FLASH_PEAK_MS, MERGE_END_MS, t))
+
+    /** Centre line narrows to nothing over the last 40 ms of the handoff. */
+    fun centerLineWidth(t: Float): Float = 1f - smoothstep(SHUTTER_END_MS, MERGE_END_MS, t)
 }
 
 /**
@@ -121,31 +171,62 @@ fun settle(p: Float): Float {
     return (1.0 - decay * (cos(omegaD * p) + (zeta * omega / omegaD) * sin(omegaD * p))).toFloat()
 }
 
-/** Precomputed gradient work for one wake scene; built once per size/colour change. */
+private const val TICK_COUNT = 60
+private const val DASH_COUNT = 48
+
+/**
+ * Precomputed gradient/geometry work for one wake scene. Every path, gradient and trigonometry
+ * table is built once per size/colour change, so [drawWakeScene] allocates nothing per frame.
+ */
 @Immutable
 class WakeSceneBrushes(
     val wash: Brush,
     val dialBody: Brush,
     val dialGlow: Brush,
+    val scanlines: Path,
+    val sweep: Brush,
+    val tickCos: FloatArray,
+    val tickSin: FloatArray,
+    val dashCos: FloatArray,
+    val dashSin: FloatArray,
 ) {
     companion object {
         fun of(
             size: Size,
             center: Offset,
             radius: Float,
-            deep: Color,
+            palette: HornColors,
             warm: Color,
             dark: Boolean,
-            faceTop: Color,
-            faceBottom: Color,
-        ): WakeSceneBrushes =
-            WakeSceneBrushes(
+        ): WakeSceneBrushes {
+            val scanlines = Path()
+            var y = 0f
+            while (y <= size.height) {
+                scanlines.moveTo(0f, y)
+                scanlines.lineTo(size.width, y)
+                y += 3f
+            }
+            val tickCos = FloatArray(TICK_COUNT)
+            val tickSin = FloatArray(TICK_COUNT)
+            for (index in 0 until TICK_COUNT) {
+                val angle = (-90f + index * (360f / TICK_COUNT)) * (PI.toFloat() / 180f)
+                tickCos[index] = cos(angle)
+                tickSin[index] = sin(angle)
+            }
+            val dashCos = FloatArray(DASH_COUNT)
+            val dashSin = FloatArray(DASH_COUNT)
+            for (index in 0 until DASH_COUNT) {
+                val angle = (index * (360f / DASH_COUNT)) * (PI.toFloat() / 180f)
+                dashCos[index] = cos(angle)
+                dashSin[index] = sin(angle)
+            }
+            return WakeSceneBrushes(
                 wash =
                     Brush.radialGradient(
                         colors =
                             listOf(
                                 warm.copy(alpha = if (dark) 0.035f else 0.025f),
-                                deep.copy(alpha = if (dark) 0.05f else 0.025f),
+                                palette.grid.copy(alpha = if (dark) 0.55f else 0.45f),
                                 Color.Transparent,
                             ),
                         center = Offset(size.width / 2f, size.height * 0.42f),
@@ -153,32 +234,47 @@ class WakeSceneBrushes(
                     ),
                 dialBody =
                     Brush.radialGradient(
-                        colors = listOf(faceTop, faceBottom),
+                        colors = listOf(palette.dialTop, palette.dialBottom),
                         center = Offset(center.x - radius * 0.32f, center.y - radius * 0.38f),
                         radius = radius * 1.9f,
                     ),
                 dialGlow =
                     Brush.radialGradient(
-                        colors = listOf(warm.copy(alpha = 0.10f), Color.Transparent),
+                        colors = listOf(warm.copy(alpha = 0.06f), Color.Transparent),
                         center = center,
-                        radius = radius * 1.30f,
+                        radius = radius * 1.26f,
                     ),
+                scanlines = scanlines,
+                sweep =
+                    Brush.linearGradient(
+                        colors =
+                            listOf(
+                                Color.Transparent,
+                                Color.White.copy(alpha = if (dark) 0.03f else 0.025f),
+                                Color.Transparent,
+                            ),
+                        start = Offset(0f, 0f),
+                        end = Offset(size.width * 0.22f, size.height * 0.06f),
+                    ),
+                tickCos = tickCos,
+                tickSin = tickSin,
+                dashCos = dashCos,
+                dashSin = dashSin,
             )
+        }
     }
 }
 
 /**
- * Draws one calibration frame. Zero allocation per call except the specular clip path, which is
- * reused through the inline [Path] built at draw time only while FOCUS is active.
+ * Draws one calibration frame. Zero allocation per call: colours are value classes, trigonometry
+ * tables come from [WakeSceneBrushes], and the only Path is the cached scanline set.
  */
 fun DrawScope.drawWakeScene(
     t: Float,
     brushes: WakeSceneBrushes,
+    palette: HornColors,
     accent: Color,
-    deep: Color,
-    warm: Color,
     dark: Boolean,
-    tickColor: Color,
 ) {
     val center = Offset(size.width / 2f, size.height * 0.42f)
     val radius = min(size.width, size.height) * 0.24f
@@ -188,57 +284,68 @@ fun DrawScope.drawWakeScene(
     val focus = StartupTimeline.focusProgress(t)
     val bloom = StartupTimeline.bloomProgress(t)
 
-    // Ambient wash bleeding in behind the instrument.
-    drawRect(brush = brushes.wash, alpha = alpha)
+    // --- atmosphere: wash, scanlines, one diagonal light sweep --------------------------------
+    drawRect(brush = brushes.wash)
+    drawPath(
+        path = brushes.scanlines,
+        color = palette.textTertiary.copy(alpha = if (dark) 0.05f else 0.04f),
+        style = Stroke(1f),
+    )
+    val scan = StartupTimeline.scanProgress(t)
+    if (scan > 0f && scan < 1f) {
+        translate(left = (-0.45f + 1.9f * scan) * size.width) {
+            drawRect(brush = brushes.sweep, alpha = 1f - abs(0.5f - scan) * 1.2f)
+        }
+    }
+    drawCornerReticle(
+        progress = StartupTimeline.reticleProgress(t),
+        palette = palette,
+        accent = accent,
+    )
 
-    // Two accent pressure arcs emitting from the crown during BLOOM (behind the dial).
+    // --- pressure bursts: twelve radial vents pulsing outward during BLOOM ---------------------
     if (bloom > 0f) {
         val phase = StartupTimeline.pressurePhase(t)
-        for (arc in 0..1) {
-            val p = (phase + arc * 0.5f) % 1f
-            val arcRadius = r * (1.40f + p * 0.40f)
-            drawArc(
-                color = warm.copy(alpha = (1f - p) * 0.40f * bloom * alpha),
-                startAngle = -58f,
-                sweepAngle = 116f,
-                useCenter = false,
-                topLeft = Offset(center.x - arcRadius, center.y - arcRadius),
-                size = Size(arcRadius * 2, arcRadius * 2),
-                style = Stroke(width = 2.dp.toPx()),
+        for (vent in 0 until 12) {
+            val p = (phase + vent / 12f) % 1f
+            val angle = (vent * 30f + 15f) * (PI.toFloat() / 180f)
+            val cosA = cos(angle)
+            val sinA = sin(angle)
+            val inner = r * 1.27f
+            val outer = r * (1.27f + 0.34f * p)
+            drawLine(
+                color = accent.copy(alpha = (1f - p) * 0.45f * bloom * alpha),
+                start = Offset(center.x + cosA * inner, center.y + sinA * inner),
+                end = Offset(center.x + cosA * outer, center.y + sinA * outer),
+                strokeWidth = 1.5.dp.toPx(),
             )
         }
     }
 
-    // Dial glow + turned face.
-    drawCircle(brush = brushes.dialGlow, radius = r * 1.35f, center = center, alpha = alpha)
+    // --- dial body ----------------------------------------------------------------------------
+    drawCircle(brush = brushes.dialGlow, radius = r * 1.30f, center = center, alpha = alpha)
     drawCircle(brush = brushes.dialBody, radius = r, center = center, alpha = alpha)
-
-    // Turning marks: three concentric machining rings (fixed geometry, no animation).
     for (ring in 1..3) {
         drawCircle(
-            color = tickColor.copy(alpha = 0.20f * alpha),
+            color = palette.textTertiary.copy(alpha = 0.20f * alpha),
             radius = r * (0.36f + ring * 0.17f),
             center = center,
             style = Stroke(width = 1.dp.toPx()),
         )
     }
-
-    // Knurled rim: 48 radial cuts, fixed geometry.
     for (cut in 0 until 48) {
         val angle = cut * (360f / 48f) * (PI.toFloat() / 180f)
-        val cosA = cos(angle)
-        val sinA = sin(angle)
+        val cutCos = cos(angle)
+        val cutSin = sin(angle)
         drawLine(
-            color = tickColor.copy(alpha = 0.38f * alpha),
-            start = Offset(center.x + cosA * r * 0.93f, center.y + sinA * r * 0.93f),
-            end = Offset(center.x + cosA * r * 0.99f, center.y + sinA * r * 0.99f),
+            color = palette.textTertiary.copy(alpha = 0.38f * alpha),
+            start = Offset(center.x + cutCos * r * 0.93f, center.y + cutSin * r * 0.93f),
+            end = Offset(center.x + cutCos * r * 0.99f, center.y + cutSin * r * 0.99f),
             strokeWidth = 1.dp.toPx(),
         )
     }
-
-    // Rim: a printed edge plus a lit top-left arc, so the disc reads as metal on both palettes.
     drawCircle(
-        color = (if (dark) accent else tickColor).copy(alpha = (if (dark) 0.55f else 0.85f) * alpha),
+        color = (if (dark) accent else palette.textTertiary).copy(alpha = (if (dark) 0.55f else 0.85f) * alpha),
         radius = r,
         center = center,
         style = Stroke(width = 1.5.dp.toPx()),
@@ -253,11 +360,37 @@ fun DrawScope.drawWakeScene(
         style = Stroke(width = 1.4.dp.toPx()),
     )
 
-    // 60 graduations sweep in clockwise; the four cardinal marks carry the accent.
+    // --- radar HUD: closed bezel, dashed ring turning slowly ---------------------------------
+    drawCircle(
+        color = palette.hairlineStrong.copy(alpha = 0.55f * alpha),
+        radius = r * 1.30f,
+        center = center,
+        style = Stroke(width = 1.dp.toPx()),
+    )
+    val dashRadius = r * 1.40f
+    rotate(degrees = StartupTimeline.dialRotation(t), pivot = center) {
+        for (index in 0 until DASH_COUNT) {
+            drawLine(
+                color = accent.copy(alpha = 0.22f * alpha * focus),
+                start =
+                    Offset(
+                        center.x + brushes.dashCos[index] * dashRadius,
+                        center.y + brushes.dashSin[index] * dashRadius,
+                    ),
+                end =
+                    Offset(
+                        center.x + brushes.dashCos[index] * (dashRadius + 4.dp.toPx()),
+                        center.y + brushes.dashSin[index] * (dashRadius + 4.dp.toPx()),
+                    ),
+                strokeWidth = 1.dp.toPx(),
+            )
+        }
+    }
+
+    // --- 60 graduations sweep in clockwise; cardinal marks carry the accent -------------------
     val sweep = StartupTimeline.ringSweep(t, 0)
     if (sweep > 0f) {
-        val tickCount = 60
-        val visible = (sweep * tickCount).toInt()
+        val visible = (sweep * TICK_COUNT).toInt()
         val outer = r * 1.24f
         val innerBase = r * 1.15f
         for (index in 0 until visible) {
@@ -271,44 +404,35 @@ fun DrawScope.drawWakeScene(
                 } else {
                     (outer - innerBase) * 0.45f
                 }
-            val angle = (-90f + index * 6f) * (PI.toFloat() / 180f)
-            val cosA = cos(angle)
-            val sinA = sin(angle)
             drawLine(
                 color =
-                    (if (cardinal) accent else tickColor)
+                    (if (cardinal) accent else palette.textTertiary)
                         .copy(alpha = (0.55f + 0.45f * sweep) * alpha),
-                start = Offset(center.x + cosA * (outer - length), center.y + sinA * (outer - length)),
-                end = Offset(center.x + cosA * outer, center.y + sinA * outer),
+                start =
+                    Offset(
+                        center.x + brushes.tickCos[index] * (outer - length),
+                        center.y + brushes.tickSin[index] * (outer - length),
+                    ),
+                end =
+                    Offset(
+                        center.x + brushes.tickCos[index] * outer,
+                        center.y + brushes.tickSin[index] * outer,
+                    ),
                 strokeWidth = if (cardinal) 2.dp.toPx() else 1.dp.toPx(),
             )
         }
     }
 
-    // Bezel arc closing the graduation ring.
-    val bezelSweep = StartupTimeline.ringSweep(t, 1)
-    if (bezelSweep > 0f) {
-        drawArc(
-            color = accent.copy(alpha = 0.28f * bezelSweep * alpha),
-            startAngle = -90f,
-            sweepAngle = 360f * bezelSweep,
-            useCenter = false,
-            topLeft = Offset(center.x - r * 1.31f, center.y - r * 1.31f),
-            size = Size(r * 2.62f, r * 2.62f),
-            style = Stroke(width = 1.dp.toPx()),
-        )
-    }
-
-    // Caliper crosshair: four arms extend from the bezel outward during FOCUS.
+    // --- caliper crosshair --------------------------------------------------------------------
     if (focus > 0f) {
-        val armInner = r * 1.34f
-        val armOuter = r * (1.34f + 0.34f * focus)
+        val armInner = r * 1.58f
+        val armOuter = r * (1.58f + 0.20f * focus)
         for (direction in 0 until 4) {
             val angle = direction * 90f * (PI.toFloat() / 180f)
             val cosA = cos(angle)
             val sinA = sin(angle)
             drawLine(
-                color = tickColor.copy(alpha = 0.34f * focus * alpha),
+                color = palette.textTertiary.copy(alpha = 0.34f * focus * alpha),
                 start = Offset(center.x + cosA * armInner, center.y + sinA * armInner),
                 end = Offset(center.x + cosA * armOuter, center.y + sinA * armOuter),
                 strokeWidth = 1.dp.toPx(),
@@ -316,8 +440,7 @@ fun DrawScope.drawWakeScene(
         }
     }
 
-    // Rim glint travelling across the crown during FOCUS: an arc on the rim, not a light band
-    // across the face (a band reads as a rendering artifact on a machined surface).
+    // --- rim glint travelling across the crown during FOCUS -----------------------------------
     if (focus > 0f && focus < 1f) {
         drawArc(
             color = Color.White.copy(alpha = (if (dark) 0.35f else 0.85f) * (1f - focus) * alpha),
@@ -330,7 +453,7 @@ fun DrawScope.drawWakeScene(
         )
     }
 
-    // Three calibration points flashing on the graduation ring.
+    // --- calibration points -------------------------------------------------------------------
     for (glint in 0..2) {
         val pulse = StartupTimeline.glintPulse(t, glint)
         if (pulse <= 0f) continue
@@ -339,8 +462,42 @@ fun DrawScope.drawWakeScene(
         val gx = center.x + cos(angle) * gr
         val gy = center.y + sin(angle) * gr
         val arm = r * 0.10f * pulse
-        val glintColor = if (glint == 1) deep else warm
+        val glintColor = if (glint == 1) palette.textTertiary else accent
         drawLine(glintColor.copy(alpha = 0.9f * pulse * alpha), Offset(gx - arm, gy), Offset(gx + arm, gy), 1.5f.dp.toPx())
         drawLine(glintColor.copy(alpha = 0.9f * pulse * alpha), Offset(gx, gy - arm), Offset(gx, gy + arm), 1.5f.dp.toPx())
+    }
+}
+
+/** Four corner brackets: the classic boot-sequence reticle, with one live accent tick. */
+private fun DrawScope.drawCornerReticle(
+    progress: Float,
+    palette: HornColors,
+    accent: Color,
+) {
+    if (progress <= 0f) return
+    val inset = 26.dp.toPx()
+    val arm = 26.dp.toPx() * progress
+    val stroke = 1.2.dp.toPx()
+    val color = palette.hairlineStrong.copy(alpha = 0.85f)
+    val corners =
+        listOf(
+            Offset(inset, inset) to (1f to 1f),
+            Offset(size.width - inset, inset) to (-1f to 1f),
+            Offset(inset, size.height - inset) to (1f to -1f),
+            Offset(size.width - inset, size.height - inset) to (-1f to -1f),
+        )
+    corners.forEachIndexed { index, (origin, direction) ->
+        val (dx, dy) = direction
+        drawLine(color, origin, Offset(origin.x + arm * dx, origin.y), stroke)
+        drawLine(color, origin, Offset(origin.x, origin.y + arm * dy), stroke)
+        if (index == 0 && arm > 6.dp.toPx()) {
+            // A single accent tick marks the reticle as a live instrument, not decoration.
+            drawLine(
+                color = accent.copy(alpha = 0.8f),
+                start = Offset(origin.x, origin.y + arm + 6.dp.toPx()),
+                end = Offset(origin.x, origin.y + arm + 14.dp.toPx()),
+                strokeWidth = 1.2.dp.toPx(),
+            )
+        }
     }
 }

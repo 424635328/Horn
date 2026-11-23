@@ -91,7 +91,7 @@ flowchart LR
 |---|---|---|---|---|
 | JUnit4 | 4.13.2 | 全仓单测基座 | Android 测试生态默认选择，Robolectric/Roborazzi 兼容最好 | `gradle/libs.versions.toml` |
 | Robolectric | 4.18.1 | JVM 无头运行 Android 测试（SDK 35 模拟） | 无需设备，秒级反馈；平台渲染细节以能力探测兜底 | `app/src/test/java/com/industrial/horn/ui/ScreenshotMatrixTest.kt` |
-| Roborazzi | 1.79.0 | 视觉回归：80 张主界面矩阵（5 音色 × 2 主题 × 2 语言 × 2 字号 × 2 布局）+ 6 张开屏定格帧 + 6 张仪表状态帧 | 像素级回归替代人眼验收；跨平台字体差异走 Linux 重录 SOP | `app/src/test/screenshots/`、`app/src/test/java/com/industrial/horn/ui/ScreenshotMatrixTest.kt` |
+| Roborazzi | 1.79.0 | 视觉回归：80 张主界面矩阵（5 音色 × 2 主题 × 2 语言 × 2 字号 × 2 布局）+ 8 张开屏定格帧 + 6 张仪表状态帧 | 像素级回归替代人眼验收；跨平台字体差异走 Linux 重录 SOP | `app/src/test/screenshots/`、`app/src/test/java/com/industrial/horn/ui/ScreenshotMatrixTest.kt` |
 | Konsist 架构守护（4 条） | 0.17.3 | feature/designsystem 禁 android.media、core:audio 禁 Compose、ViewModel 归 presentation 包、实时音频模块禁顶层可变态 | 架构约束测试化，违规即红 | `app/src/test/java/com/industrial/horn/architecture/ArchitectureTest.kt` |
 | DSP 声学/频谱 QA | 本仓库自研 | RMS、峰值、谱重心、过零率、幅度谱、detuned-pair 等测量工具驱动逐音色断言 | 声学结论全部可机器复算 | `core/audio/src/test/java/com/industrial/horn/audio/DspMeasurement.kt` |
 | 立体声/混响 QA | 本仓库自研 | 单声道折叠安全（能量损失 <3 dB、200 Hz–2 kHz 陷波 <6 dB）、混响有界性测试；RT60 偏差 ±15% 为契约验收口径 | 折叠红线可测化 | `core/audio/src/test/java/com/industrial/horn/audio/HornSynthesizerContractTest.kt`、`core/audio/src/test/java/com/industrial/horn/audio/SceneEngineTest.kt`、`docs/spec/research/02-spatial-scene-acoustics.md` |
