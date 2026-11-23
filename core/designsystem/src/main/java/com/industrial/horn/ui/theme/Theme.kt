@@ -5,70 +5,74 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.graphics.Color
 
-private val DarkColorScheme =
+private val CarbonScheme =
     darkColorScheme(
-        primary = HornAmber,
-        onPrimary = HornInk,
-        primaryContainer = HornAmberDeep,
-        onPrimaryContainer = HornCream,
-        secondary = ColorTokens.DarkSecondary,
-        onSecondary = HornInk,
-        background = DarkBackground,
-        onBackground = DarkOnSurface,
-        surface = DarkSurface,
-        onSurface = DarkOnSurface,
-        surfaceVariant = DarkSurfaceVariant,
-        onSurfaceVariant = DarkOnSurfaceVariant,
-        outline = ColorTokens.DarkOutline,
-        error = ErrorRed,
+        primary = HornInstrumentAccents.Car.carbon,
+        onPrimary = Color(0xFF0F1115),
+        primaryContainer = CarbonPanelRaised,
+        onPrimaryContainer = CarbonTextPrimary,
+        secondary = CarbonTextSecondary,
+        onSecondary = CarbonCanvas,
+        background = CarbonCanvas,
+        onBackground = CarbonTextPrimary,
+        surface = CarbonPanel,
+        onSurface = CarbonTextPrimary,
+        surfaceVariant = CarbonPanelRaised,
+        onSurfaceVariant = CarbonTextSecondary,
+        surfaceContainer = CarbonPanel,
+        surfaceContainerHigh = CarbonPanelRaised,
+        surfaceContainerLow = CarbonPanelSunken,
+        outline = CarbonHairlineStrong,
+        outlineVariant = CarbonHairline,
+        error = HornFaultDark,
+        onError = CarbonCanvas,
     )
 
-private val LightColorScheme =
+private val CeramicScheme =
     lightColorScheme(
-        primary = HornAmberDeep,
-        onPrimary = HornCream,
-        primaryContainer = HornAmber,
-        onPrimaryContainer = HornInk,
-        secondary = ColorTokens.LightSecondary,
-        onSecondary = HornCream,
-        background = LightBackground,
-        onBackground = LightOnSurface,
-        surface = LightSurface,
-        onSurface = LightOnSurface,
-        surfaceVariant = LightSurfaceVariant,
-        onSurfaceVariant = LightOnSurfaceVariant,
-        outline = ColorTokens.LightOutline,
-        error = ErrorRedLight,
+        primary = HornInstrumentAccents.Car.daylight,
+        onPrimary = CeramicPanel,
+        primaryContainer = CeramicPanelSunken,
+        onPrimaryContainer = CeramicTextPrimary,
+        secondary = CeramicTextSecondary,
+        onSecondary = CeramicPanel,
+        background = CeramicCanvas,
+        onBackground = CeramicTextPrimary,
+        surface = CeramicPanel,
+        onSurface = CeramicTextPrimary,
+        surfaceVariant = CeramicPanelSunken,
+        onSurfaceVariant = CeramicTextSecondary,
+        surfaceContainer = CeramicPanel,
+        surfaceContainerHigh = CeramicPanel,
+        surfaceContainerLow = CeramicPanelSunken,
+        outline = CeramicHairlineStrong,
+        outlineVariant = CeramicHairline,
+        error = HornFault,
+        onError = CeramicPanel,
     )
 
 /**
- * Brand theme. Dynamic color is intentionally not used: the metal/amber horn identity must not
- * change with the wallpaper, and both light and dark schemes are contrast-checked.
+ * Cockpit theme. Dynamic colour is deliberately not used: the material identity (ceramic or
+ * carbon) is part of the product, and both schemes are contrast-checked by a JVM test, so a
+ * wallpaper cannot repaint the instrument or push it below AA.
+ *
+ * [darkTheme] must be resolved by the host from the persisted [ThemeMode] — see
+ * `MainActivity`, which feeds `ThemeMode.SYSTEM` from `isSystemInDarkTheme()` and pins the other
+ * two modes.
  */
 @Composable
 fun HornTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     content: @Composable () -> Unit,
 ) {
-    MaterialTheme(
-        colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme,
-        typography = HornTypography,
-        content = content,
-    )
-}
-
-private object ColorTokens {
-    val DarkSecondary =
-        androidx.compose.ui.graphics
-            .Color(0xFFB9C3CA)
-    val LightSecondary =
-        androidx.compose.ui.graphics
-            .Color(0xFF6D6254)
-    val DarkOutline =
-        androidx.compose.ui.graphics
-            .Color(0xFF4A555E)
-    val LightOutline =
-        androidx.compose.ui.graphics
-            .Color(0xFF9A8E7C)
+    CompositionLocalProvider(LocalHornColors provides if (darkTheme) CarbonColors else DaylightColors) {
+        MaterialTheme(
+            colorScheme = if (darkTheme) CarbonScheme else CeramicScheme,
+            typography = HornTypography,
+            content = content,
+        )
+    }
 }

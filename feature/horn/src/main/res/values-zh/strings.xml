@@ -2,7 +2,16 @@
 <resources>
     <string name="app_name">多音喇叭</string>
     <string name="brand_name">HORN</string>
-    <string name="brand_tagline">五音色喇叭模拟系统</string>
+    <string name="brand_tagline">精密声学仪器</string>
+    <string name="plate_voice">音色</string>
+    <string name="plate_instrument">仪表</string>
+    <string name="plate_telemetry">遥测</string>
+    <string name="theme_mode_system">自动</string>
+    <string name="theme_mode_light">日光</string>
+    <string name="theme_mode_dark">夜间</string>
+    <string name="theme_mode_description">主题：%1$s，轻触切换。</string>
+    <string name="theme_choose_action">选择主题</string>
+    <string name="lab_key_description">打开专业声学工坊</string>
     <string name="voice_selector_label">喇叭音色</string>
     <string name="horn_type_car">汽车</string>
     <string name="horn_type_train">火车</string>

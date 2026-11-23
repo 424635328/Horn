@@ -4,10 +4,12 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -34,15 +36,18 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.industrial.horn.feature.R
-import com.industrial.horn.ui.theme.HornAmber
+import com.industrial.horn.ui.theme.HornInstrumentAccents
+import com.industrial.horn.ui.theme.LocalHornColors
 import com.industrial.horn.ui.theme.StartupTimeline
 import com.industrial.horn.ui.theme.WakeSceneBrushes
 import com.industrial.horn.ui.theme.drawWakeScene
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlin.math.roundToInt
 
 /**
  * Optical Wake overlay (see docs/spec/03 §"Optical Wake").
@@ -126,14 +131,20 @@ fun StartupOverlay(
         label = "startupExitAlpha",
     )
 
-    val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
-    val deep = if (dark) Color(0xFF2E5F86) else Color(0xFF8A9BA8)
-    val warm = HornAmber
+    val cockpit = LocalHornColors.current
+    val dark = cockpit.isDark
+    val deep = if (dark) cockpit.textTertiary else cockpit.hairlineStrong
+    // Brand amber resolves per palette so the calibration scene keeps AA contrast on carbon and
+    // on ceramic alike; it is the single place the startup borrows the Car instrument accent.
+    val warm = HornInstrumentAccents.Car.resolve(dark)
 
     Box(
         modifier =
             modifier
                 .fillMaxSize()
+                // The overlay owns its surface: the app is already composed underneath, and a
+                // transparent boot layer would flash the window background on some devices.
+                .background(cockpit.canvas)
                 .graphicsLayer {
                     val t = elapsed()
                     val scale = exitScale * StartupTimeline.overlayScale(t)
@@ -167,6 +178,8 @@ fun StartupOverlay(
                                 deep = deep,
                                 warm = warm,
                                 dark = dark,
+                                faceTop = cockpit.dialTop,
+                                faceBottom = cockpit.dialBottom,
                             )
                         onDrawBehind {
                             drawWakeScene(
@@ -175,19 +188,21 @@ fun StartupOverlay(
                                 accent = warm,
                                 deep = deep,
                                 warm = warm,
+                                dark = dark,
+                                tickColor = cockpit.textTertiary,
                             )
                         }
                     },
             onDraw = {},
         )
 
-        WakeWordmark(elapsed = elapsed, dark = dark)
+        WakeWordmark(elapsed = elapsed)
 
         Text(
             text = skipHint,
-            color = (if (dark) Color(0xFFF4EEE4) else Color(0xFF1C1A17)).copy(alpha = 0.55f),
-            fontSize = 11.sp,
-            letterSpacing = 1.2.sp,
+            color = cockpit.textTertiary,
+            fontSize = 10.sp,
+            letterSpacing = 1.6.sp,
             textAlign = TextAlign.Center,
             modifier =
                 Modifier
@@ -213,10 +228,7 @@ private fun smoothFade(t: Float): Float =
  * its own composable so the throttled recompositions never touch the canvas layer.
  */
 @Composable
-private fun WakeWordmark(
-    elapsed: () -> Float,
-    dark: Boolean,
-) {
+private fun WakeWordmark(elapsed: () -> Float) {
     var spacing by remember { mutableFloatStateOf(12f) }
     LaunchedEffect(elapsed) {
         while (isActive) {
@@ -228,17 +240,23 @@ private fun WakeWordmark(
     }
     Text(
         text = stringResource(R.string.brand_name),
-        color = if (dark) Color(0xFFF4EEE4) else Color(0xFF1C1A17),
-        fontSize = 30.sp,
+        color = LocalHornColors.current.textPrimary,
+        fontSize = 26.sp,
         fontWeight = FontWeight.Bold,
         letterSpacing = spacing.sp,
         textAlign = TextAlign.Center,
         modifier =
             Modifier
-                .graphicsLayer {
+                // Layout offset (deferred read) instead of a layer translation: a RenderNode
+                // translation can be clipped to the layer bounds on some renderers, which made
+                // the wordmark vanish on the pre-MERGE frames. A layout offset never clips.
+                .offset {
                     val settle = StartupTimeline.bloomProgress(elapsed())
-                    alpha = StartupTimeline.wakeAlpha(elapsed()) * (0.55f + 0.45f * settle)
-                    translationY = (1f - settle) * 22f * density
-                }.padding(bottom = 120.dp),
+                    val entrance = (1f - settle) * 22f * density
+                    IntOffset(0, (132.dp.toPx() + entrance).roundToInt())
+                }.graphicsLayer {
+                    val settle = StartupTimeline.bloomProgress(elapsed())
+                    alpha = StartupTimeline.wakeAlpha(elapsed()) * (0.45f + 0.55f * settle)
+                },
     )
 }

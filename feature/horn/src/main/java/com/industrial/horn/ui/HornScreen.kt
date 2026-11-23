@@ -1,14 +1,11 @@
 package com.industrial.horn.ui
 
+import androidx.annotation.DrawableRes
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -24,10 +21,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -42,46 +41,60 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.DrawScope
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.luminance
-import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.industrial.horn.audio.AcousticSpace
 import com.industrial.horn.audio.AudioTelemetry
 import com.industrial.horn.audio.CustomHornProfile
 import com.industrial.horn.audio.HornType
+import com.industrial.horn.data.ThemeMode
 import com.industrial.horn.feature.R
 import com.industrial.horn.presentation.HornFailure
 import com.industrial.horn.presentation.HornStatus
 import com.industrial.horn.presentation.HornUiState
-import com.industrial.horn.ui.theme.AmbientMeshBackground
-import com.industrial.horn.ui.theme.AmbientPalettes
-import com.industrial.horn.ui.theme.AppleGlassSurface
-import com.industrial.horn.ui.theme.AppleRadii
-import com.industrial.horn.ui.theme.AudioAura
-import com.industrial.horn.ui.theme.DynamicPillBanner
+import com.industrial.horn.ui.theme.CockpitCanvas
+import com.industrial.horn.ui.theme.CockpitStatusRail
+import com.industrial.horn.ui.theme.EngravedRule
+import com.industrial.horn.ui.theme.HornRadii
+import com.industrial.horn.ui.theme.HornText
 import com.industrial.horn.ui.theme.HornTheme
-import com.industrial.horn.ui.theme.drawAmbientMesh
-import com.industrial.horn.ui.theme.rememberAmbientMeshSpec
+import com.industrial.horn.ui.theme.LocalHornColors
+import com.industrial.horn.ui.theme.MachinedPanel
+import com.industrial.horn.ui.theme.PlateCaption
 import com.industrial.horn.ui.theme.revealStagger
 import kotlin.math.min
 import com.industrial.horn.designsystem.R as DesignR
 
 /**
- * Main horn screen (v3.5 Apple Glass). The single-button interaction is untouched; the visuals
- * are layered glass over a breathing ambient mesh, and every high-frequency value (RMS envelope,
- * expression drag) reaches the draw layer through deferred reads.
+ * Main cockpit screen (v4.0 Precision Automotive Cockpit).
+ *
+ * The single-button interaction is untouched: one instrument pad, hold to honk, slide out to
+ * cancel, vertical drag bends expression. What changed is the material language — a machined
+ * ceramic/carbon instrument panel instead of frosted glass — and the information architecture:
+ *
+ *   top bar : brand identity · theme position · Pro Sound Lab
+ *   rail    : status token · acoustic space · sample rate
+ *   centre  : the instrument pad (60-tick RMS ring + 240° expression bezel)
+ *   deck    : 5-voice gear strip, 4-room row, volume-key trigger
+ *
+ * Every high-frequency value (RMS envelope, expression drag) reaches the draw layer through
+ * deferred reads; startup reveal runs through one shared clock.
  */
 @Composable
 fun HornScreen(
@@ -93,6 +106,9 @@ fun HornScreen(
     modifier: Modifier = Modifier,
     telemetry: AudioTelemetry = AudioTelemetry(),
     windowWidthSizeClass: WindowWidthSizeClass = WindowWidthSizeClass.Compact,
+    themeMode: ThemeMode = ThemeMode.SYSTEM,
+    onCycleThemeMode: () -> Unit = {},
+    onSelectThemeMode: (ThemeMode) -> Unit = {},
     onExpressionChanged: (Float) -> Unit = {},
     onSelectSpace: (AcousticSpace) -> Unit = {},
     onVolumePromptClicked: () -> Unit = {},
@@ -105,12 +121,14 @@ fun HornScreen(
     readWaveformStereo: (FloatArray, FloatArray) -> Int = { _, _ -> 0 },
     revealProgress: () -> Float = { 1f },
 ) {
+    val colors = LocalHornColors.current
+    val dark = colors.isDark
     val isHonking = state.isHonking
     val selectedHorn = state.selectedHorn
-    val visualStyle = selectedHorn.visualStyle()
+    val visualStyle = selectedHorn.visualStyle(dark)
     val accent by animateColorAsState(
         targetValue = visualStyle.accent,
-        animationSpec = tween(durationMillis = 420),
+        animationSpec = tween(durationMillis = 260),
         label = "selectedHornAccent",
     )
     val typeName = selectedHorn.accessibilityName()
@@ -184,208 +202,169 @@ fun HornScreen(
         modifier =
             modifier
                 .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background)
+                .background(colors.canvas)
                 .windowInsetsPadding(WindowInsets.safeDrawing)
                 .testTag("horn_screen"),
     ) {
         val expanded = windowWidthSizeClass != WindowWidthSizeClass.Compact
-        val lowHeight = maxHeight < 620.dp
-        val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+        val lowHeight = maxHeight < 640.dp
 
-        val meshSpec =
-            rememberAmbientMeshSpec(
-                palette = AmbientPalettes.of(selectedHorn.ambientKey()),
-                dark = dark,
-                rmsProvider = rmsProvider,
-                honking = isHonking,
-            )
-        AmbientMeshBackground(
-            spec = meshSpec,
+        CockpitCanvas(
+            accent = accent,
+            active = isHonking,
+            rmsProvider = rmsProvider,
             modifier = Modifier.fillMaxSize(),
         )
-        // Shared by the glass panels: re-draws the exact mesh layer behind each panel so the
-        // RenderEffect blur is a true backdrop blur instead of a self-blur.
-        val glassBackdrop: DrawScope.(Offset) -> Unit =
-            remember(meshSpec) {
-                { origin -> drawAmbientMesh(meshSpec, origin) }
+
+        Column(modifier = Modifier.fillMaxSize()) {
+            CockpitTopBar(
+                accent = accent,
+                themeMode = themeMode,
+                showTagline = !lowHeight,
+                onCycleThemeMode = onCycleThemeMode,
+                onSelectThemeMode = onSelectThemeMode,
+                onOpenLab = { showLab = true },
+                modifier = Modifier.revealEntrance(revealProgress, 0),
+            )
+            CockpitStatusRail(
+                statusText = state.status.bannerLabel(),
+                detailText = "${state.acousticSpace.displayName()} · ${selectedHorn.displayName()}",
+                ledColor = if (state.status is HornStatus.Error) colors.fault else accent,
+                statusColor =
+                    if (state.status is HornStatus.Error) {
+                        colors.fault
+                    } else {
+                        colors.textPrimary
+                    },
+                modifier = Modifier.revealEntrance(revealProgress, 1),
+            ) {
+                if (state.audioSafety.earProtectionActive) {
+                    EarProtectionBadge(visible = true, accent = accent)
+                } else {
+                    Text(
+                        text = "48 kHz · 2CH",
+                        color = colors.textTertiary,
+                        style = HornText.Data,
+                    )
+                }
+            }
+            if (state.showZeroVolumePrompt) {
+                VolumeWarningStrip(
+                    accent = accent,
+                    onSetVolume = onVolumePromptClicked,
+                    onDismiss = onVolumePromptDismissed,
+                )
             }
 
-        if (expanded) {
-            Row(
-                modifier =
-                    Modifier
-                        .fillMaxSize()
-                        .testTag("expanded_layout"),
-            ) {
+            if (expanded) {
+                Row(
+                    modifier =
+                        Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                            .testTag("expanded_layout"),
+                ) {
+                    Column(
+                        modifier =
+                            Modifier
+                                .weight(0.46f)
+                                .fillMaxHeight()
+                                .padding(start = 24.dp, end = 12.dp, top = 16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        Spacer(modifier = Modifier.weight(1f))
+                        CockpitDeck(
+                            state = state,
+                            accent = accent,
+                            onSelectHorn = selectHorn,
+                            onSelectSpace = onSelectSpace,
+                            onVolumeTriggerChanged = onVolumeTriggerChanged,
+                            modifier = Modifier.revealEntrance(revealProgress, 2),
+                        )
+                        Spacer(modifier = Modifier.height(14.dp))
+                        TelemetryPlate(
+                            telemetry = telemetry,
+                            accent = accent,
+                            modifier =
+                                Modifier
+                                    .revealEntrance(revealProgress, 3)
+                                    .widthIn(max = 520.dp),
+                        )
+                        Spacer(modifier = Modifier.weight(1f))
+                        CockpitFooter(
+                            state = state,
+                            compact = false,
+                            modifier =
+                                Modifier
+                                    .revealEntrance(revealProgress, 4)
+                                    .padding(bottom = 18.dp),
+                        )
+                    }
+                    InstrumentZone(
+                        state = state,
+                        accent = accent,
+                        visualStyle = visualStyle,
+                        rmsProvider = rmsProvider,
+                        expressionProvider = expressionProvider,
+                        buttonDescription = buttonDescription,
+                        buttonStateDescription = buttonStateDescription,
+                        buttonLabel = buttonLabel,
+                        maxDiameter = 360.dp,
+                        onPressStart = pressStart,
+                        onPressEnd = pressEnd,
+                        onPressCancel = pressCancel,
+                        onExpressionChanged = changeExpression,
+                        modifier =
+                            Modifier
+                                .weight(0.54f)
+                                .fillMaxHeight()
+                                .padding(end = 24.dp, top = 8.dp, bottom = 12.dp),
+                    )
+                }
+            } else {
                 Column(
                     modifier =
                         Modifier
-                            .weight(0.43f)
-                            .fillMaxHeight()
-                            .padding(start = 28.dp, end = 10.dp),
+                            .weight(1f)
+                            .fillMaxWidth()
+                            .testTag("compact_layout"),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    BrandHeader(
+                    InstrumentZone(
+                        state = state,
                         accent = accent,
-                        showTagline = !lowHeight,
-                        modifier =
-                            Modifier
-                                .revealEntrance(revealProgress, 0)
-                                .padding(top = 52.dp, start = 4.dp, end = 4.dp),
+                        visualStyle = visualStyle,
+                        rmsProvider = rmsProvider,
+                        expressionProvider = expressionProvider,
+                        buttonDescription = buttonDescription,
+                        buttonStateDescription = buttonStateDescription,
+                        buttonLabel = buttonLabel,
+                        maxDiameter = 320.dp,
+                        onPressStart = pressStart,
+                        onPressEnd = pressEnd,
+                        onPressCancel = pressCancel,
+                        onExpressionChanged = changeExpression,
+                        modifier = Modifier.weight(1f).fillMaxWidth(),
                     )
-                    Spacer(modifier = Modifier.height(14.dp))
-                    GlassConsole(
+                    CockpitDeck(
                         state = state,
                         accent = accent,
                         onSelectHorn = selectHorn,
                         onSelectSpace = onSelectSpace,
                         onVolumeTriggerChanged = onVolumeTriggerChanged,
-                        backdrop = glassBackdrop,
-                        modifier = Modifier.revealEntrance(revealProgress, 1),
-                    )
-                    Spacer(modifier = Modifier.weight(1f))
-                    Footer(
-                        state = state,
-                        compact = false,
                         modifier =
                             Modifier
                                 .revealEntrance(revealProgress, 2)
-                                .padding(bottom = 24.dp),
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp),
                     )
-                }
-                HornHero(
-                    state = state,
-                    accent = accent,
-                    visualStyle = visualStyle,
-                    rmsProvider = rmsProvider,
-                    expressionProvider = expressionProvider,
-                    buttonDescription = buttonDescription,
-                    buttonStateDescription = buttonStateDescription,
-                    buttonLabel = buttonLabel,
-                    onPressStart = pressStart,
-                    onPressEnd = pressEnd,
-                    onPressCancel = pressCancel,
-                    onExpressionChanged = changeExpression,
-                    modifier =
-                        Modifier
-                            .weight(0.57f)
-                            .fillMaxHeight()
-                            .padding(end = 28.dp),
-                )
-            }
-        } else {
-            Column(
-                modifier =
-                    Modifier
-                        .fillMaxSize()
-                        .testTag("compact_layout"),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                BrandHeader(
-                    accent = accent,
-                    showTagline = !lowHeight,
-                    modifier =
-                        Modifier
-                            .revealEntrance(revealProgress, 0)
-                            .padding(
-                                top = if (lowHeight) 48.dp else 56.dp,
-                                start = 24.dp,
-                                end = 24.dp,
-                            ),
-                )
-                HornHero(
-                    state = state,
-                    accent = accent,
-                    visualStyle = visualStyle,
-                    rmsProvider = rmsProvider,
-                    expressionProvider = expressionProvider,
-                    buttonDescription = buttonDescription,
-                    buttonStateDescription = buttonStateDescription,
-                    buttonLabel = buttonLabel,
-                    onPressStart = pressStart,
-                    onPressEnd = pressEnd,
-                    onPressCancel = pressCancel,
-                    onExpressionChanged = changeExpression,
-                    modifier =
-                        Modifier
-                            .weight(1f)
-                            .fillMaxWidth(),
-                )
-                GlassConsole(
-                    state = state,
-                    accent = accent,
-                    onSelectHorn = selectHorn,
-                    onSelectSpace = onSelectSpace,
-                    onVolumeTriggerChanged = onVolumeTriggerChanged,
-                    backdrop = glassBackdrop,
-                    modifier =
-                        Modifier
-                            .revealEntrance(revealProgress, 1)
-                            .fillMaxWidth()
-                            .padding(horizontal = 20.dp),
-                )
-                Footer(
-                    state = state,
-                    compact = lowHeight,
-                    modifier =
-                        Modifier
-                            .revealEntrance(revealProgress, 2)
-                            .padding(bottom = 10.dp, start = 28.dp, end = 28.dp),
-                )
-            }
-        }
-
-        // Dynamic-island banner: zero-volume rescue > ear protection > engine/space status.
-        DynamicPillBanner(
-            visible = true,
-            accent = accent,
-            backdrop = glassBackdrop,
-            modifier =
-                Modifier
-                    .align(Alignment.TopCenter)
-                    .padding(top = 8.dp),
-        ) {
-            when {
-                state.showZeroVolumePrompt -> {
-                    VolumeWarningCapsule(
-                        visible = true,
-                        accent = accent,
-                        onSetVolume = onVolumePromptClicked,
-                        onDismiss = onVolumePromptDismissed,
-                    )
-                }
-
-                state.audioSafety.earProtectionActive -> {
-                    EarProtectionBadge(
-                        visible = true,
-                        accent = accent,
-                    )
-                }
-
-                else -> {
-                    Box(
+                    CockpitFooter(
+                        state = state,
+                        compact = lowHeight,
                         modifier =
                             Modifier
-                                .size(6.dp)
-                                .background(accent, CircleShape),
-                    )
-                    Text(
-                        text = state.status.bannerLabel(),
-                        color =
-                            if (state.status is HornStatus.Error) {
-                                MaterialTheme.colorScheme.error
-                            } else {
-                                MaterialTheme.colorScheme.onBackground
-                            },
-                        fontSize = 10.sp,
-                        letterSpacing = 1.2.sp,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    Text(
-                        text = state.acousticSpace.displayName(),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = 10.sp,
-                        letterSpacing = 1.2.sp,
+                                .revealEntrance(revealProgress, 3)
+                                .padding(top = 8.dp, bottom = 8.dp, start = 24.dp, end = 24.dp),
                     )
                 }
             }
@@ -399,7 +378,7 @@ fun HornScreen(
             modifier =
                 Modifier
                     .align(Alignment.TopEnd)
-                    .padding(top = 6.dp, end = 10.dp),
+                    .padding(top = 92.dp, end = 8.dp),
         )
 
         if (showLab) {
@@ -421,7 +400,7 @@ fun HornScreen(
 }
 
 /**
- * Staggered MERGE-handoff entrance for one main-UI island. Deferred read inside graphicsLayer:
+ * Staggered MERGE-handoff entrance for one cockpit island. Deferred read inside graphicsLayer:
  * startup frames redraw without recomposition, and a default reveal provider of 1 keeps the
  * screen pixel-identical outside the wake animation.
  */
@@ -432,72 +411,160 @@ private fun Modifier.revealEntrance(
     this.graphicsLayer {
         val progress = revealStagger(reveal(), index)
         alpha = progress
-        translationY = (1f - progress) * 24f * density
+        translationY = (1f - progress) * 18f * density
     }
 
 @Composable
-private fun HornStatus.bannerLabel(): String =
-    stringResource(
-        when (this) {
-            is HornStatus.Error -> R.string.status_error
-            HornStatus.Honking -> R.string.status_honking
-            HornStatus.Idle -> R.string.status_idle
-        },
-    )
+private fun CockpitTopBar(
+    accent: Color,
+    themeMode: ThemeMode,
+    showTagline: Boolean,
+    onCycleThemeMode: () -> Unit,
+    onSelectThemeMode: (ThemeMode) -> Unit,
+    onOpenLab: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = LocalHornColors.current
+    Row(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .height(56.dp)
+                .padding(horizontal = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            painter = painterResource(DesignR.drawable.ic_brand_mark),
+            contentDescription = null,
+            tint = accent,
+            modifier = Modifier.size(17.dp),
+        )
+        Spacer(modifier = Modifier.size(9.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = stringResource(R.string.brand_name),
+                color = colors.textPrimary,
+                style = MaterialTheme.typography.labelLarge,
+                letterSpacing = 4.sp,
+                maxLines = 1,
+            )
+            if (showTagline) {
+                Text(
+                    text = stringResource(R.string.brand_tagline),
+                    color = colors.textTertiary,
+                    style = HornText.PlateLabel,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        ThemeKey(
+            mode = themeMode,
+            accent = accent,
+            onCycle = onCycleThemeMode,
+            onSelect = onSelectThemeMode,
+        )
+        Spacer(modifier = Modifier.size(8.dp))
+        LabKey(
+            accent = accent,
+            onClick = onOpenLab,
+        )
+    }
+}
 
 /**
- * Floating glass console: voice selector, acoustic space and the volume-key trigger, grouped in
- * one frosted island with concentric radii.
+ * Theme position key. A single tap advances AUTO → DAY → NIGHT (the frequent action); a long
+ * press — or the TalkBack custom action — opens the explicit three-position menu, so the
+ * preference is reachable without discovering a gesture.
  */
 @Composable
-private fun GlassConsole(
-    state: HornUiState,
+private fun ThemeKey(
+    mode: ThemeMode,
     accent: Color,
-    onSelectHorn: (HornType) -> Unit,
-    onSelectSpace: (AcousticSpace) -> Unit,
-    onVolumeTriggerChanged: (Boolean) -> Unit,
-    modifier: Modifier = Modifier,
-    backdrop: (DrawScope.(Offset) -> Unit)? = null,
+    onCycle: () -> Unit,
+    onSelect: (ThemeMode) -> Unit,
 ) {
-    AppleGlassSurface(
-        modifier = modifier.widthIn(max = 460.dp),
-        shape = RoundedCornerShape(AppleRadii.Panel),
-        rimAccent = accent,
-        frostAlpha = 0.08f,
-        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
-        backdrop = backdrop,
-    ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            HornTypeSelector(
-                selected = state.selectedHorn,
-                enabled = state.preferencesLoaded,
-                accent = accent,
-                onSelect = onSelectHorn,
-                showLabel = false,
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 8.dp),
+    val colors = LocalHornColors.current
+    var menuOpen by remember { mutableStateOf(false) }
+    val modeLabel = stringResource(mode.labelRes())
+    val description = stringResource(R.string.theme_mode_description, modeLabel)
+    val actionLabel = stringResource(R.string.theme_choose_action)
+    Box {
+        Row(
+            modifier =
+                Modifier
+                    .height(34.dp)
+                    .clip(RoundedCornerShape(HornRadii.Key))
+                    .background(colors.panel)
+                    .border(1.dp, colors.hairlineStrong, RoundedCornerShape(HornRadii.Key))
+                    .combinedClickable(
+                        onClick = onCycle,
+                        onLongClick = { menuOpen = true },
+                    ).semantics(mergeDescendants = true) {
+                        contentDescription = description
+                        role = Role.Button
+                        customActions =
+                            listOf(
+                                CustomAccessibilityAction(actionLabel) {
+                                    menuOpen = true
+                                    true
+                                },
+                            )
+                    }.testTag("theme_key")
+                    .padding(horizontal = 9.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                painter = painterResource(mode.iconRes()),
+                contentDescription = null,
+                tint = accent,
+                modifier = Modifier.size(14.dp),
             )
-            Spacer(modifier = Modifier.height(10.dp))
-            Row(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                AcousticSpaceSelector(
-                    selected = state.acousticSpace,
-                    accent = accent,
-                    onSelect = onSelectSpace,
-                    modifier = Modifier.weight(1f),
-                )
-                VolumeTriggerChip(
-                    enabled = state.volumeTriggerEnabled,
-                    accent = accent,
-                    onChanged = onVolumeTriggerChanged,
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+                text = modeLabel,
+                color = colors.textPrimary,
+                style = HornText.Data,
+            )
+        }
+        DropdownMenu(
+            expanded = menuOpen,
+            onDismissRequest = { menuOpen = false },
+            containerColor = colors.panel,
+            shape = RoundedCornerShape(HornRadii.Instrument),
+        ) {
+            ThemeMode.entries.forEach { candidate ->
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            text = stringResource(candidate.labelRes()),
+                            color =
+                                if (candidate == mode) {
+                                    accent
+                                } else {
+                                    colors.textPrimary
+                                },
+                            style = HornText.Data,
+                        )
+                    },
+                    leadingIcon = {
+                        Icon(
+                            painter = painterResource(candidate.iconRes()),
+                            contentDescription = null,
+                            tint =
+                                if (candidate == mode) {
+                                    accent
+                                } else {
+                                    colors.textTertiary
+                                },
+                            modifier = Modifier.size(16.dp),
+                        )
+                    },
+                    onClick = {
+                        onSelect(candidate)
+                        menuOpen = false
+                    },
                 )
             }
         }
@@ -505,7 +572,61 @@ private fun GlassConsole(
 }
 
 @Composable
-private fun HornHero(
+private fun LabKey(
+    accent: Color,
+    onClick: () -> Unit,
+) {
+    val colors = LocalHornColors.current
+    val description = stringResource(R.string.lab_key_description)
+    Box(
+        modifier =
+            Modifier
+                .size(34.dp)
+                .clip(RoundedCornerShape(HornRadii.Key))
+                .background(colors.panel)
+                .border(1.dp, colors.hairlineStrong, RoundedCornerShape(HornRadii.Key))
+                .combinedClickable(onClick = onClick)
+                .semantics {
+                    contentDescription = description
+                    role = Role.Button
+                }.testTag("lab_key"),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            painter = painterResource(DesignR.drawable.ic_lab_tune),
+            contentDescription = null,
+            tint = accent,
+            modifier = Modifier.size(16.dp),
+        )
+    }
+}
+
+@Composable
+private fun VolumeWarningStrip(
+    accent: Color,
+    onSetVolume: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val colors = LocalHornColors.current
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .background(colors.panelSunken)
+                .padding(horizontal = 16.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        VolumeWarningCapsule(
+            visible = true,
+            accent = accent,
+            onSetVolume = onSetVolume,
+            onDismiss = onDismiss,
+        )
+    }
+}
+
+@Composable
+private fun InstrumentZone(
     state: HornUiState,
     accent: Color,
     visualStyle: HornVisualStyle,
@@ -519,141 +640,193 @@ private fun HornHero(
     onPressCancel: () -> Unit,
     onExpressionChanged: (Float) -> Unit,
     modifier: Modifier = Modifier,
+    maxDiameter: Dp = 320.dp,
 ) {
-    BoxWithConstraints(
-        modifier = modifier,
-        contentAlignment = Alignment.Center,
-    ) {
-        val diameter = minOf(maxWidth * 0.70f, maxHeight * 0.82f, 340.dp)
-        val waveDiameter = diameter * 1.55f
-        AudioAura(
-            accent = accent,
-            rmsProvider = rmsProvider,
-            active = state.isHonking,
-            modifier = Modifier.size(diameter * 1.34f),
-        )
-        SoundWaves(
-            active = state.isHonking,
-            rmsProvider = rmsProvider,
-            accent = accent,
-            style = visualStyle.wave,
-            modifier = Modifier.size(waveDiameter),
-        )
-        HornButton(
-            isHonking = state.isHonking,
-            contentDescription = buttonDescription,
-            stateDescription = buttonStateDescription,
-            label = buttonLabel,
-            diameter = diameter,
-            accent = accent,
-            iconRes = visualStyle.iconRes,
-            rmsProvider = rmsProvider,
-            expressionProvider = expressionProvider,
-            onPressStart = onPressStart,
-            onPressEnd = onPressEnd,
-            onPressCancel = onPressCancel,
-            onExpressionChanged = onExpressionChanged,
-        )
-    }
-}
-
-@Composable
-private fun SoundWaves(
-    active: Boolean,
-    rmsProvider: () -> Float,
-    accent: Color,
-    style: WaveStyle,
-    modifier: Modifier = Modifier,
-) {
-    // Idle screens must stay frame-idle; inspection mode keeps previews and UI tests deterministic.
-    if (!active || LocalInspectionMode.current) return
-
-    val transition = rememberInfiniteTransition(label = "hornWaves")
-    val progress by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec =
-            infiniteRepeatable(
-                animation = tween(durationMillis = style.durationMillis, easing = LinearEasing),
-                repeatMode = RepeatMode.Restart,
-            ),
-        label = "hornWaveProgress",
-    )
-
-    Canvas(modifier = modifier) {
-        val rms = rmsProvider().coerceIn(0f, 1f)
-        val pressure = 0.35f + rms * 0.9f
-        val center = Offset(size.width / 2f, size.height / 2f)
-        val baseRadius = min(size.width, size.height) * 0.315f
-        val ringCount = style.ringCount.coerceAtLeast(1)
-
-        repeat(ringCount) { index ->
-            val phase = (progress + index / ringCount.toFloat()) % 1f
-            val radius = baseRadius * (1f + phase * style.expansion) * (0.94f + rms * 0.10f)
-            val stroke = (style.strokeWidthDp - phase * 0.65f).coerceAtLeast(0.35f)
-            drawCircle(
-                color = accent.copy(alpha = (1f - phase) * style.baseAlpha * pressure),
-                radius = radius,
-                center = center,
-                style = Stroke(width = stroke.dp.toPx()),
-            )
-        }
-
-        drawCircle(
-            color = accent.copy(alpha = style.haloAlpha * pressure),
-            radius = baseRadius * 1.12f,
-            center = center,
-        )
-    }
-}
-
-@Composable
-private fun BrandHeader(
-    accent: Color,
-    showTagline: Boolean,
-    modifier: Modifier = Modifier,
-) {
+    val colors = LocalHornColors.current
     Column(
-        modifier = modifier,
+        modifier = modifier.padding(horizontal = 20.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Row(
-            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Icon(
-                painter = painterResource(DesignR.drawable.ic_brand_mark),
-                contentDescription = null,
-                tint = accent,
-                modifier = Modifier.size(15.dp),
-            )
-            Spacer(modifier = Modifier.size(8.dp))
             Text(
-                text = stringResource(R.string.brand_name),
-                color = MaterialTheme.colorScheme.onBackground,
-                style = MaterialTheme.typography.labelLarge,
-                letterSpacing = 4.sp,
+                text = "02",
+                color = accent,
+                style = HornText.Data,
+            )
+            Spacer(modifier = Modifier.width(7.dp))
+            Box(
+                modifier =
+                    Modifier
+                        .width(18.dp)
+                        .height(1.dp)
+                        .background(colors.hairlineStrong),
+            )
+            Spacer(modifier = Modifier.width(7.dp))
+            Text(
+                text = stringResource(R.string.plate_instrument),
+                color = colors.textSecondary,
+                style = HornText.PlateLabel,
             )
         }
-        if (showTagline) {
-            Spacer(modifier = Modifier.height(7.dp))
-            Text(
-                text = stringResource(R.string.brand_tagline),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.labelSmall,
-                letterSpacing = 1.6.sp,
-                textAlign = TextAlign.Center,
+        BoxWithConstraints(
+            modifier =
+                Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
+            contentAlignment = Alignment.Center,
+        ) {
+            val diameter = minOf(maxWidth * 0.94f, maxHeight * 0.94f, maxDiameter)
+            HornInstrumentPad(
+                isHonking = state.isHonking,
+                contentDescription = buttonDescription,
+                stateDescription = buttonStateDescription,
+                label = buttonLabel,
+                diameter = diameter,
+                accent = accent,
+                iconRes = visualStyle.iconRes,
+                rmsProvider = rmsProvider,
+                expressionProvider = expressionProvider,
+                onPressStart = onPressStart,
+                onPressEnd = onPressEnd,
+                onPressCancel = onPressCancel,
+                onExpressionChanged = onExpressionChanged,
             )
         }
     }
 }
 
 @Composable
-private fun Footer(
+private fun TelemetryPlate(
+    telemetry: AudioTelemetry,
+    accent: Color,
+    modifier: Modifier = Modifier,
+) {
+    MachinedPanel(
+        modifier = modifier.fillMaxWidth(),
+        sunken = true,
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+    ) {
+        PlateCaption(
+            index = "04",
+            title = stringResource(R.string.plate_telemetry),
+            accent = accent,
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        TelemetryRow(label = "ENGINE", value = telemetry.engineName.ifBlank { "—" })
+        TelemetryRow(label = "OUTPUT", value = telemetry.outputMode.displayName)
+        TelemetryRow(label = "LATENCY", value = "${"%.1f".format(telemetry.latencyMs)} ms")
+        TelemetryRow(label = "RENDER", value = "${telemetry.renderTimeMicros} µs")
+        TelemetryRow(label = "XRUN", value = telemetry.xrunCount.toString())
+        TelemetryRow(label = "STEREO ρ", value = "%.2f".format(telemetry.stereoCorrelation))
+        TelemetryRow(label = "CHANNELS", value = "2 × 48 kHz")
+    }
+}
+
+@Composable
+private fun TelemetryRow(
+    label: String,
+    value: String,
+) {
+    val colors = LocalHornColors.current
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(vertical = 2.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = label,
+            color = colors.textTertiary,
+            style = HornText.PlateLabel,
+            maxLines = 1,
+        )
+        Spacer(modifier = Modifier.width(10.dp))
+        Text(
+            text = value,
+            color = colors.textSecondary,
+            style = HornText.Data,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@Composable
+private fun CockpitDeck(
+    state: HornUiState,
+    accent: Color,
+    onSelectHorn: (HornType) -> Unit,
+    onSelectSpace: (AcousticSpace) -> Unit,
+    onVolumeTriggerChanged: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = LocalHornColors.current
+    MachinedPanel(
+        modifier = modifier.widthIn(max = 520.dp),
+        accent = accent,
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 11.dp),
+    ) {
+        PlateCaption(
+            index = "01",
+            title = stringResource(R.string.plate_voice),
+            accent = accent,
+        ) {
+            Text(
+                text = state.selectedHorn.displayName().uppercase(),
+                color = colors.textSecondary,
+                style = HornText.Data,
+            )
+        }
+        Spacer(modifier = Modifier.height(9.dp))
+        HornTypeSelector(
+            selected = state.selectedHorn,
+            enabled = state.preferencesLoaded,
+            accent = accent,
+            onSelect = onSelectHorn,
+            showLabel = false,
+        )
+        Spacer(modifier = Modifier.height(11.dp))
+        EngravedRule(accent = accent)
+        Spacer(modifier = Modifier.height(9.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            PlateCaption(
+                index = "03",
+                title = stringResource(R.string.acoustic_space_label),
+                accent = accent,
+                modifier = Modifier.weight(1f),
+            )
+            VolumeTriggerChip(
+                enabled = state.volumeTriggerEnabled,
+                accent = accent,
+                onChanged = onVolumeTriggerChanged,
+            )
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        AcousticSpaceSelector(
+            selected = state.acousticSpace,
+            accent = accent,
+            onSelect = onSelectSpace,
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
+}
+
+@Composable
+private fun CockpitFooter(
     state: HornUiState,
     compact: Boolean,
     modifier: Modifier = Modifier,
 ) {
+    val colors = LocalHornColors.current
     val hint =
         stringResource(
             when {
@@ -671,25 +844,33 @@ private fun Footer(
             Text(
                 text = hint,
                 modifier = Modifier.widthIn(max = 380.dp),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodyMedium,
+                color = colors.textSecondary,
+                style = HornText.Data,
                 textAlign = TextAlign.Center,
             )
         }
-
         if (state.status is HornStatus.Error) {
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(6.dp))
             Text(
                 text = state.status.failure.message(),
                 modifier = Modifier.widthIn(max = 380.dp),
-                color = MaterialTheme.colorScheme.error,
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.Medium,
+                color = colors.fault,
+                style = HornText.Data,
                 textAlign = TextAlign.Center,
             )
         }
     }
 }
+
+@Composable
+private fun HornStatus.bannerLabel(): String =
+    stringResource(
+        when (this) {
+            is HornStatus.Error -> R.string.status_error
+            HornStatus.Honking -> R.string.status_honking
+            HornStatus.Idle -> R.string.status_idle
+        },
+    )
 
 @Composable
 private fun HornFailure.message(): String =
@@ -701,8 +882,24 @@ private fun HornFailure.message(): String =
         },
     )
 
+@Composable
+private fun ThemeMode.labelRes(): Int =
+    when (this) {
+        ThemeMode.SYSTEM -> R.string.theme_mode_system
+        ThemeMode.LIGHT -> R.string.theme_mode_light
+        ThemeMode.DARK -> R.string.theme_mode_dark
+    }
+
+@DrawableRes
+private fun ThemeMode.iconRes(): Int =
+    when (this) {
+        ThemeMode.SYSTEM -> DesignR.drawable.ic_theme_auto
+        ThemeMode.LIGHT -> DesignR.drawable.ic_theme_light
+        ThemeMode.DARK -> DesignR.drawable.ic_theme_dark
+    }
+
 @Suppress("UnusedPrivateMember")
-@Preview(name = "Dark Car", showBackground = true, backgroundColor = 0xFF0B0E11, widthDp = 360, heightDp = 800)
+@Preview(name = "Carbon Cockpit", showBackground = true, backgroundColor = 0xFF0D0F12, widthDp = 360, heightDp = 800)
 @Composable
 private fun HornScreenDarkPreview() {
     HornTheme(darkTheme = true) {
@@ -721,7 +918,7 @@ private fun HornScreenDarkPreview() {
 }
 
 @Suppress("UnusedPrivateMember")
-@Preview(name = "Light Train", showBackground = true, backgroundColor = 0xFFF3EDE3, widthDp = 360, heightDp = 800)
+@Preview(name = "Ceramic Cockpit", showBackground = true, backgroundColor = 0xFFF3F3EE, widthDp = 360, heightDp = 800)
 @Composable
 private fun HornScreenLightPreview() {
     HornTheme(darkTheme = false) {

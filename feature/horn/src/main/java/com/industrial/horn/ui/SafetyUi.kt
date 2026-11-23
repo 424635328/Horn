@@ -1,15 +1,16 @@
 package com.industrial.horn.ui
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -21,24 +22,22 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.toggleableState
-import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.industrial.horn.audio.AcousticSpace
 import com.industrial.horn.feature.R
-import com.industrial.horn.ui.theme.AppleGlassSurface
-import com.industrial.horn.ui.theme.AppleRadii
-import com.industrial.horn.ui.theme.GlassSegmentedControl
-import com.industrial.horn.ui.theme.HornCream
+import com.industrial.horn.ui.theme.HornRadii
+import com.industrial.horn.ui.theme.HornText
+import com.industrial.horn.ui.theme.InstrumentToggle
+import com.industrial.horn.ui.theme.LocalHornColors
+import com.industrial.horn.ui.theme.TactileKeycap
+import com.industrial.horn.ui.theme.keycapLabelColor
 import java.util.Locale
 
 /**
- * Three-way acoustic space selector on the shared glass segmented control. Tags and radio
- * semantics match the established UI test contract.
+ * Four-way acoustic space row on the shared keycap contract. One row of four, never a carousel:
+ * the whole point of the row is that all four rooms are visible at once.
  */
 @Composable
 fun AcousticSpaceSelector(
@@ -47,29 +46,47 @@ fun AcousticSpaceSelector(
     onSelect: (AcousticSpace) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    // Accessibility names resolve from resources, so they are computed here and passed as data.
     val descriptions = AcousticSpace.entries.associateWith { it.accessibilityName() }
-    GlassSegmentedControl(
-        items = AcousticSpace.entries,
-        selected = selected,
-        onSelect = onSelect,
-        accent = accent,
-        itemTag = { "space_${it.name.lowercase(Locale.ROOT)}" },
-        itemDescription = { descriptions.getValue(it) },
-        modifier = modifier,
-    ) { space, isSelected ->
-        Text(
-            text = space.displayName(),
-            color = if (isSelected) HornCream else SelectorMuted,
-            fontSize = 10.sp,
-            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
-            maxLines = 1,
-        )
+    val colors = LocalHornColors.current
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        AcousticSpace.entries.forEach { space ->
+            val isSelected = space == selected
+            TactileKeycap(
+                selected = isSelected,
+                accent = accent,
+                onClick = { onSelect(space) },
+                role = Role.RadioButton,
+                contentDescription = descriptions.getValue(space),
+                tag = "space_${space.name.lowercase(Locale.ROOT)}",
+                minHeight = 34,
+                modifier = Modifier.weight(1f),
+            ) {
+                Text(
+                    text = space.displayName(),
+                    color = keycapLabelColor(selected = isSelected, enabled = true, accent = accent),
+                    style = HornText.KeyLabel,
+                    maxLines = 1,
+                )
+                if (isSelected) {
+                    Box(
+                        modifier =
+                            Modifier
+                                .size(width = 14.dp, height = 2.dp)
+                                .background(accent),
+                    )
+                } else {
+                    Spacer(modifier = Modifier.size(width = 14.dp, height = 2.dp))
+                }
+            }
+        }
     }
 }
 
 /**
- * Glass toggle for the physical volume-key trigger. Off means the system volume keys behave
+ * Machined toggle for the physical volume-key trigger. Off means the system volume keys behave
  * completely normally.
  */
 @Composable
@@ -79,55 +96,19 @@ fun VolumeTriggerChip(
     onChanged: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val description = stringResource(R.string.volume_trigger_description)
-    Box(
-        modifier =
-            modifier
-                .semantics {
-                    contentDescription = description
-                    toggleableState = ToggleableState(enabled)
-                }.testTag("volume_trigger_chip"),
-    ) {
-        AppleGlassSurface(
-            shape = RoundedCornerShape(AppleRadii.Capsule),
-            rimAccent = if (enabled) accent else Color.White,
-            frostAlpha = if (enabled) 0.16f else 0.08f,
-            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(7.dp),
-            ) {
-                Box(
-                    modifier =
-                        Modifier
-                            .size(6.dp)
-                            .background(
-                                color = if (enabled) accent else SelectorMuted,
-                                shape = CircleShape,
-                            ),
-                )
-                Text(
-                    text = stringResource(R.string.volume_trigger_label),
-                    color = if (enabled) HornCream else SelectorMuted,
-                    fontSize = 10.sp,
-                    letterSpacing = 0.5.sp,
-                )
-            }
-        }
-        // Full-area click target above the visual pill.
-        Box(
-            modifier =
-                Modifier
-                    .matchParentSize()
-                    .clickable(role = Role.Switch) { onChanged(!enabled) },
-        )
-    }
+    InstrumentToggle(
+        checked = enabled,
+        accent = accent,
+        onCheckedChange = onChanged,
+        label = stringResource(R.string.volume_trigger_label),
+        description = stringResource(R.string.volume_trigger_description),
+        tag = "volume_trigger_chip",
+        modifier = modifier,
+    )
 }
 
 /**
- * Ear-protection micro badge. Restyled as a small glass pill; shown only while the -6dB limiter
- * is engaged.
+ * Ear-protection micro badge: a machined tag, shown only while the −6 dB limiter is engaged.
  */
 @Composable
 fun EarProtectionBadge(
@@ -136,35 +117,34 @@ fun EarProtectionBadge(
     accent: Color = MaterialTheme.colorScheme.primary,
 ) {
     if (!visible) return
-    AppleGlassSurface(
-        modifier = modifier.testTag("ear_protection_badge"),
-        shape = RoundedCornerShape(AppleRadii.Capsule),
-        rimAccent = accent,
-        frostAlpha = 0.12f,
-        contentPadding = PaddingValues(horizontal = 11.dp, vertical = 6.dp),
+    val colors = LocalHornColors.current
+    Row(
+        modifier =
+            modifier
+                .testTag("ear_protection_badge")
+                .background(colors.panel, RoundedCornerShape(HornRadii.Chip))
+                .border(1.dp, accent.copy(alpha = 0.55f), RoundedCornerShape(HornRadii.Chip))
+                .padding(horizontal = 9.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier =
-                    Modifier
-                        .size(5.dp)
-                        .background(accent, CircleShape),
-            )
-            Spacer(modifier = Modifier.size(7.dp))
-            Text(
-                text = stringResource(R.string.ear_protection_badge),
-                color = accent,
-                fontSize = 9.sp,
-                letterSpacing = 0.8.sp,
-                fontWeight = FontWeight.SemiBold,
-            )
-        }
+        Box(
+            modifier =
+                Modifier
+                    .size(5.dp)
+                    .background(accent),
+        )
+        Text(
+            text = stringResource(R.string.ear_protection_badge),
+            color = accent,
+            style = HornText.Data,
+        )
     }
 }
 
 /**
- * Zero-volume rescue capsule. The dynamic-island banner hosts it; the one-tap action restores
- * media volume to 60% and the prompt fades away.
+ * Zero-volume rescue strip. The status rail hosts it; the one-tap action restores media volume to
+ * 60% and the prompt leaves composition.
  */
 @Composable
 fun VolumeWarningCapsule(
@@ -175,30 +155,35 @@ fun VolumeWarningCapsule(
     modifier: Modifier = Modifier,
 ) {
     if (!visible) return
+    val colors = LocalHornColors.current
     Row(
         modifier =
             modifier
                 .widthIn(max = 420.dp)
                 .testTag("zero_volume_prompt"),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         Box(
             modifier =
                 Modifier
-                    .size(6.dp)
-                    .background(accent, CircleShape),
+                    .size(5.dp)
+                    .background(colors.fault),
         )
         Text(
             text = stringResource(R.string.zero_volume_title),
-            color = MaterialTheme.colorScheme.onBackground,
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.Medium,
+            color = colors.textPrimary,
+            style = HornText.Data,
+            modifier = Modifier.padding(start = 6.dp),
         )
-        TextButton(onClick = onSetVolume) {
+        TextButton(
+            onClick = onSetVolume,
+            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+        ) {
             Text(
                 text = stringResource(R.string.zero_volume_action),
                 color = accent,
+                fontSize = 10.sp,
                 fontWeight = FontWeight.Bold,
             )
         }
@@ -208,8 +193,8 @@ fun VolumeWarningCapsule(
         ) {
             Text(
                 text = stringResource(R.string.zero_volume_dismiss_symbol),
-                color = SelectorMuted,
-                fontSize = 18.sp,
+                color = colors.textTertiary,
+                fontSize = 15.sp,
             )
         }
     }
@@ -236,5 +221,3 @@ fun AcousticSpace.accessibilityName(): String =
             AcousticSpace.GARAGE -> R.string.acoustic_space_garage_description
         },
     )
-
-private val SelectorMuted = Color(0xFFA8B0B6)

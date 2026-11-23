@@ -13,11 +13,15 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSizeClassApi
 import androidx.compose.material3.windowsizeclass.calculateWindowSizeClass
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -28,10 +32,12 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import androidx.core.view.WindowCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
+import com.industrial.horn.data.ThemeMode
 import com.industrial.horn.data.WearCommand
 import com.industrial.horn.data.WearStatus
 import com.industrial.horn.presentation.HornViewModel
@@ -128,68 +134,98 @@ class MainActivity : ComponentActivity() {
                         withFrameNanos { }
                         firstFrameReady.value = true
                     }
-                    HornTheme {
-                        val state = viewModel.uiState.collectAsStateWithLifecycle()
-                        val telemetry = viewModel.telemetry.collectAsStateWithLifecycle()
-                        val windowSizeClass = calculateWindowSizeClass(this@MainActivity)
-                        val context = LocalContext.current
-                        LaunchedEffect(
-                            state.value.preferencesLoaded,
-                            state.value.status,
-                            state.value.selectedHorn,
+                    val state = viewModel.uiState.collectAsStateWithLifecycle()
+                    val telemetry = viewModel.telemetry.collectAsStateWithLifecycle()
+                    val windowSizeClass = calculateWindowSizeClass(this@MainActivity)
+                    val context = LocalContext.current
+
+                    // Resolved theme: SYSTEM follows the platform, DAY/NIGHT pin the palette.
+                    val systemDark = isSystemInDarkTheme()
+                    val useDarkTheme =
+                        when (state.value.themeMode) {
+                            ThemeMode.SYSTEM -> systemDark
+                            ThemeMode.LIGHT -> false
+                            ThemeMode.DARK -> true
+                        }
+
+                    // Edge-to-edge means the bars are transparent over our canvas, so their icon
+                    // polarity must follow the resolved palette instead of the system default.
+                    DisposableEffect(useDarkTheme) {
+                        val controller = WindowCompat.getInsetsController(window, window.decorView)
+                        controller.isAppearanceLightStatusBars = !useDarkTheme
+                        controller.isAppearanceLightNavigationBars = !useDarkTheme
+                        onDispose {}
+                    }
+
+                    LaunchedEffect(
+                        state.value.preferencesLoaded,
+                        state.value.status,
+                        state.value.selectedHorn,
+                    ) {
+                        if (state.value.preferencesLoaded) {
+                            WearStatusSender.send(
+                                context,
+                                WearStatus(
+                                    isHonking = state.value.isHonking,
+                                    voice = state.value.selectedHorn,
+                                ),
+                            )
+                        }
+                    }
+
+                    HornTheme(darkTheme = useDarkTheme) {
+                        Box(
+                            modifier =
+                                Modifier
+                                    .fillMaxSize()
+                                    .background(MaterialTheme.colorScheme.background),
                         ) {
-                            if (state.value.preferencesLoaded) {
-                                WearStatusSender.send(
-                                    context,
-                                    WearStatus(
-                                        isHonking = state.value.isHonking,
-                                        voice = state.value.selectedHorn,
-                                    ),
+                            HornScreen(
+                                state = state.value,
+                                telemetry = telemetry.value,
+                                windowWidthSizeClass = windowSizeClass.widthSizeClass,
+                                themeMode = state.value.themeMode,
+                                onCycleThemeMode = viewModel::onCycleThemeMode,
+                                onSelectThemeMode = viewModel::onSelectThemeMode,
+                                onPressStart = viewModel::onPressStart,
+                                onPressEnd = viewModel::onPressEnd,
+                                onPressCancel = viewModel::onPressCancel,
+                                onExpressionChanged = viewModel::onExpressionChanged,
+                                onSelectHorn = viewModel::onSelectHorn,
+                                onSelectSpace = viewModel::onAcousticSpaceSelected,
+                                onVolumePromptClicked = viewModel::onVolumePromptClicked,
+                                onVolumePromptDismissed = viewModel::onVolumePromptDismissed,
+                                onVolumeTriggerChanged = viewModel::onVolumeTriggerChanged,
+                                onCustomProfileChanged = viewModel::onCustomProfileChanged,
+                                onCustomProfileSaved = viewModel::onCustomProfileSaved,
+                                onCustomProfileReset = viewModel::onCustomProfileReset,
+                                readWaveform = viewModel::readWaveform,
+                                readWaveformStereo = viewModel::readWaveformStereo,
+                                revealProgress = {
+                                    if (startupDone) {
+                                        1f
+                                    } else {
+                                        StartupTimeline.mergeProgress(wakeClock.floatValue)
+                                    }
+                                },
+                            )
+                            if (!startupDone && (startupState == StartupState.Playing || startupExiting)) {
+                                StartupOverlay(
+                                    onSkip = {
+                                        startupExiting = true
+                                        startupCoordinator.skip()
+                                    },
+                                    onRevealLatched = {},
+                                    onFinished = {
+                                        startupDone = true
+                                        startupCoordinator.complete()
+                                    },
+                                    exiting = startupExiting,
+                                    elapsedProvider = { wakeClock.floatValue },
+                                    onBloomHaptic = ::lightHapticTick,
                                 )
                             }
                         }
-                        HornScreen(
-                            state = state.value,
-                            telemetry = telemetry.value,
-                            windowWidthSizeClass = windowSizeClass.widthSizeClass,
-                            onPressStart = viewModel::onPressStart,
-                            onPressEnd = viewModel::onPressEnd,
-                            onPressCancel = viewModel::onPressCancel,
-                            onExpressionChanged = viewModel::onExpressionChanged,
-                            onSelectHorn = viewModel::onSelectHorn,
-                            onSelectSpace = viewModel::onAcousticSpaceSelected,
-                            onVolumePromptClicked = viewModel::onVolumePromptClicked,
-                            onVolumePromptDismissed = viewModel::onVolumePromptDismissed,
-                            onVolumeTriggerChanged = viewModel::onVolumeTriggerChanged,
-                            onCustomProfileChanged = viewModel::onCustomProfileChanged,
-                            onCustomProfileSaved = viewModel::onCustomProfileSaved,
-                            onCustomProfileReset = viewModel::onCustomProfileReset,
-                            readWaveform = viewModel::readWaveform,
-                            readWaveformStereo = viewModel::readWaveformStereo,
-                            revealProgress = {
-                                if (startupDone) {
-                                    1f
-                                } else {
-                                    StartupTimeline.mergeProgress(wakeClock.floatValue)
-                                }
-                            },
-                        )
-                    }
-                    if (!startupDone && (startupState == StartupState.Playing || startupExiting)) {
-                        StartupOverlay(
-                            onSkip = {
-                                startupExiting = true
-                                startupCoordinator.skip()
-                            },
-                            onRevealLatched = {},
-                            onFinished = {
-                                startupDone = true
-                                startupCoordinator.complete()
-                            },
-                            exiting = startupExiting,
-                            elapsedProvider = { wakeClock.floatValue },
-                            onBloomHaptic = ::lightHapticTick,
-                        )
                     }
                 }
             }

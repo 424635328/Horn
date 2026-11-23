@@ -7,8 +7,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.clipRect
-import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.unit.dp
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.exp
@@ -17,14 +16,15 @@ import kotlin.math.sin
 import kotlin.math.sqrt
 
 /**
- * Optical Wake startup timeline. Everything on screen is a pure function f(t) of one elapsed
+ * Cold-start calibration timeline. Everything on screen is a pure function f(t) of one elapsed
  * clock — no per-element scheduling — so any frame can be reproduced, scrubbed or snapshotted.
  * Frozen milestones (milliseconds):
  *
- *  0–160   WAKE   : orb silhouette 0.62 → 0.72, opacity 0 → 1
- *  160–500  FOCUS  : twin halo rings sweep in (60 ms stagger), specular sweep, mesh wash bleeds
- *  500–820  BLOOM  : orb settles to 1.0 with a TactileOrb-style overshoot, two amber pressure
- *                    arcs emit, three star glints pulse, wordmark settles; one light haptic at 560
+ *  0–160   WAKE   : instrument silhouette 0.62 → 0.72, opacity 0 → 1
+ *  160–500  FOCUS  : caliper crosshair extends, 60 graduations sweep in clockwise (60 ms
+ *                    stagger), specular pass over the bezel
+ *  500–820  BLOOM  : dial settles to 1.0 with a damped overshoot, two accent pressure arcs emit,
+ *                    three calibration points flash, wordmark settles; one light haptic at 560
  *  820–1040 MERGE  : the reveal latch fires once at 820 (main UI takes over underneath) and the
  *                    overlay scales 1.0 → 1.04 while fading out; it then leaves composition
  */
@@ -58,7 +58,7 @@ object StartupTimeline {
 
     fun overlayScale(t: Float): Float = 1f + 0.04f * mergeProgress(t)
 
-    /** Orb scale: wake ramp, then a spring-settled bloom to full size. */
+    /** Dial scale: wake ramp, then a spring-settled bloom to full size. */
     fun orbScale(t: Float): Float =
         if (t < FOCUS_END_MS) {
             wakeScale(t)
@@ -66,10 +66,10 @@ object StartupTimeline {
             0.72f + 0.28f * settle(bloomProgress(t))
         }
 
-    /** Pressure-arc phase loop (%1) used by the two amber emission arcs. */
+    /** Pressure-arc phase loop (%1) used by the two accent emission arcs. */
     fun pressurePhase(t: Float): Float = (((t - FOCUS_END_MS) / 260f) % 1f + 1f) % 1f
 
-    /** Star glint pulses (ring-crossing sparkle motif), one window per glint. */
+    /** Calibration-point flashes, one window per point. */
     fun glintPulse(
         t: Float,
         index: Int,
@@ -108,7 +108,7 @@ fun smoothstep(
 }
 
 /**
- * Deterministic underdamped step response (TactileOrb character): ~12% overshoot that settles
+ * Deterministic underdamped step response (machined dial character): ~12% overshoot that settles
  * exactly to 1 — a milestone curve derived from physics, not an easing library.
  */
 fun settle(p: Float): Float {
@@ -125,8 +125,8 @@ fun settle(p: Float): Float {
 @Immutable
 class WakeSceneBrushes(
     val wash: Brush,
-    val orbBody: Brush,
-    val orbGlow: Brush,
+    val dialBody: Brush,
+    val dialGlow: Brush,
 ) {
     companion object {
         fun of(
@@ -136,42 +136,40 @@ class WakeSceneBrushes(
             deep: Color,
             warm: Color,
             dark: Boolean,
+            faceTop: Color,
+            faceBottom: Color,
         ): WakeSceneBrushes =
             WakeSceneBrushes(
                 wash =
                     Brush.radialGradient(
                         colors =
                             listOf(
-                                warm.copy(alpha = if (dark) 0.16f else 0.10f),
-                                deep.copy(alpha = if (dark) 0.22f else 0.12f),
+                                warm.copy(alpha = if (dark) 0.035f else 0.025f),
+                                deep.copy(alpha = if (dark) 0.05f else 0.025f),
                                 Color.Transparent,
                             ),
                         center = Offset(size.width / 2f, size.height * 0.42f),
-                        radius = maxOf(size.width, size.height) * 0.72f,
+                        radius = maxOf(size.width, size.height) * 1.05f,
                     ),
-                orbBody =
+                dialBody =
                     Brush.radialGradient(
-                        colors =
-                            listOf(
-                                if (dark) Color(0xFF3A444D) else Color(0xFFF2F5F8),
-                                if (dark) Color(0xFF12181D) else Color(0xFFB9C4CD),
-                            ),
+                        colors = listOf(faceTop, faceBottom),
                         center = Offset(center.x - radius * 0.32f, center.y - radius * 0.38f),
-                        radius = radius * 1.6f,
+                        radius = radius * 1.9f,
                     ),
-                orbGlow =
+                dialGlow =
                     Brush.radialGradient(
-                        colors = listOf(warm.copy(alpha = 0.34f), Color.Transparent),
+                        colors = listOf(warm.copy(alpha = 0.10f), Color.Transparent),
                         center = center,
-                        radius = radius * 1.45f,
+                        radius = radius * 1.30f,
                     ),
             )
     }
 }
 
 /**
- * Draws one wake frame. Zero allocation per call: every brush was precomputed in
- * [WakeSceneBrushes], every remaining primitive is scalar math over solid colours.
+ * Draws one calibration frame. Zero allocation per call except the specular clip path, which is
+ * reused through the inline [Path] built at draw time only while FOCUS is active.
  */
 fun DrawScope.drawWakeScene(
     t: Float,
@@ -179,93 +177,170 @@ fun DrawScope.drawWakeScene(
     accent: Color,
     deep: Color,
     warm: Color,
+    dark: Boolean,
+    tickColor: Color,
 ) {
     val center = Offset(size.width / 2f, size.height * 0.42f)
     val radius = min(size.width, size.height) * 0.24f
     val alpha = StartupTimeline.wakeAlpha(t)
     val scale = StartupTimeline.orbScale(t)
     val r = radius * scale
+    val focus = StartupTimeline.focusProgress(t)
+    val bloom = StartupTimeline.bloomProgress(t)
 
-    // Ambient wash bleeding in behind the orb.
+    // Ambient wash bleeding in behind the instrument.
     drawRect(brush = brushes.wash, alpha = alpha)
 
-    // Twin halo rings sweeping in with a 60 ms stagger.
-    for (ring in 0..1) {
-        val sweep = StartupTimeline.ringSweep(t, ring)
-        if (sweep <= 0f) continue
-        val ringRadius = r * (1.22f + ring * 0.16f)
-        drawArc(
-            color = (if (ring == 0) Color.White else warm).copy(alpha = (0.34f - ring * 0.12f) * sweep * alpha),
-            startAngle = -90f,
-            sweepAngle = 360f * sweep,
-            useCenter = false,
-            topLeft = Offset(center.x - ringRadius, center.y - ringRadius),
-            size = Size(ringRadius * 2, ringRadius * 2),
-            style = Stroke(width = (2.2f - ring * 0.7f) * density * 0.5f),
-        )
-    }
-
-    // Orb glow + body + accent rim.
-    drawCircle(brush = brushes.orbGlow, radius = r * 1.45f, center = center, alpha = alpha)
-    drawCircle(brush = brushes.orbBody, radius = r, center = center, alpha = alpha)
-    drawCircle(
-        color = accent.copy(alpha = 0.42f * alpha),
-        radius = r,
-        center = center,
-        style = Stroke(width = 1.5f * density * 0.5f),
-    )
-
-    // Specular sweep across the crown during FOCUS.
-    val focus = StartupTimeline.focusProgress(t)
-    if (focus > 0f && focus < 1f) {
-        rotate(degrees = -18f + 36f * focus, pivot = center) {
-            clipRect(
-                left = center.x - r,
-                top = center.y - r,
-                right = center.x + r,
-                bottom = center.y + r,
-            ) {
-                val sweepX = center.x - r + 2f * r * focus
-                drawLine(
-                    color = Color.White.copy(alpha = 0.35f * alpha),
-                    start = Offset(sweepX - r * 0.18f, center.y - r),
-                    end = Offset(sweepX + r * 0.18f, center.y + r),
-                    strokeWidth = r * 0.09f,
-                )
-            }
-        }
-    }
-
-    // Two amber pressure arcs emitting from the crown during BLOOM.
-    val bloom = StartupTimeline.bloomProgress(t)
+    // Two accent pressure arcs emitting from the crown during BLOOM (behind the dial).
     if (bloom > 0f) {
         val phase = StartupTimeline.pressurePhase(t)
         for (arc in 0..1) {
             val p = (phase + arc * 0.5f) % 1f
-            val arcRadius = r * (1.32f + p * 0.55f)
+            val arcRadius = r * (1.40f + p * 0.40f)
             drawArc(
-                color = warm.copy(alpha = (1f - p) * 0.55f * bloom * alpha),
+                color = warm.copy(alpha = (1f - p) * 0.40f * bloom * alpha),
                 startAngle = -58f,
                 sweepAngle = 116f,
                 useCenter = false,
                 topLeft = Offset(center.x - arcRadius, center.y - arcRadius),
                 size = Size(arcRadius * 2, arcRadius * 2),
-                style = Stroke(width = 2.6f * density * 0.5f),
+                style = Stroke(width = 2.dp.toPx()),
             )
         }
     }
 
-    // Three star glints (design-prototype motif) pulsing at the ring crossings.
+    // Dial glow + turned face.
+    drawCircle(brush = brushes.dialGlow, radius = r * 1.35f, center = center, alpha = alpha)
+    drawCircle(brush = brushes.dialBody, radius = r, center = center, alpha = alpha)
+
+    // Turning marks: three concentric machining rings (fixed geometry, no animation).
+    for (ring in 1..3) {
+        drawCircle(
+            color = tickColor.copy(alpha = 0.20f * alpha),
+            radius = r * (0.36f + ring * 0.17f),
+            center = center,
+            style = Stroke(width = 1.dp.toPx()),
+        )
+    }
+
+    // Knurled rim: 48 radial cuts, fixed geometry.
+    for (cut in 0 until 48) {
+        val angle = cut * (360f / 48f) * (PI.toFloat() / 180f)
+        val cosA = cos(angle)
+        val sinA = sin(angle)
+        drawLine(
+            color = tickColor.copy(alpha = 0.38f * alpha),
+            start = Offset(center.x + cosA * r * 0.93f, center.y + sinA * r * 0.93f),
+            end = Offset(center.x + cosA * r * 0.99f, center.y + sinA * r * 0.99f),
+            strokeWidth = 1.dp.toPx(),
+        )
+    }
+
+    // Rim: a printed edge plus a lit top-left arc, so the disc reads as metal on both palettes.
+    drawCircle(
+        color = (if (dark) accent else tickColor).copy(alpha = (if (dark) 0.55f else 0.85f) * alpha),
+        radius = r,
+        center = center,
+        style = Stroke(width = 1.5.dp.toPx()),
+    )
+    drawArc(
+        color = if (dark) Color.White.copy(alpha = 0.28f) else Color.White.copy(alpha = 0.75f),
+        startAngle = 155f,
+        sweepAngle = 110f,
+        useCenter = false,
+        topLeft = Offset(center.x - r + 1f, center.y - r + 1f),
+        size = Size((r - 1f) * 2f, (r - 1f) * 2f),
+        style = Stroke(width = 1.4.dp.toPx()),
+    )
+
+    // 60 graduations sweep in clockwise; the four cardinal marks carry the accent.
+    val sweep = StartupTimeline.ringSweep(t, 0)
+    if (sweep > 0f) {
+        val tickCount = 60
+        val visible = (sweep * tickCount).toInt()
+        val outer = r * 1.24f
+        val innerBase = r * 1.15f
+        for (index in 0 until visible) {
+            val cardinal = index % 15 == 0
+            val major = index % 5 == 0
+            val length =
+                if (cardinal) {
+                    outer - innerBase
+                } else if (major) {
+                    (outer - innerBase) * 0.72f
+                } else {
+                    (outer - innerBase) * 0.45f
+                }
+            val angle = (-90f + index * 6f) * (PI.toFloat() / 180f)
+            val cosA = cos(angle)
+            val sinA = sin(angle)
+            drawLine(
+                color =
+                    (if (cardinal) accent else tickColor)
+                        .copy(alpha = (0.55f + 0.45f * sweep) * alpha),
+                start = Offset(center.x + cosA * (outer - length), center.y + sinA * (outer - length)),
+                end = Offset(center.x + cosA * outer, center.y + sinA * outer),
+                strokeWidth = if (cardinal) 2.dp.toPx() else 1.dp.toPx(),
+            )
+        }
+    }
+
+    // Bezel arc closing the graduation ring.
+    val bezelSweep = StartupTimeline.ringSweep(t, 1)
+    if (bezelSweep > 0f) {
+        drawArc(
+            color = accent.copy(alpha = 0.28f * bezelSweep * alpha),
+            startAngle = -90f,
+            sweepAngle = 360f * bezelSweep,
+            useCenter = false,
+            topLeft = Offset(center.x - r * 1.31f, center.y - r * 1.31f),
+            size = Size(r * 2.62f, r * 2.62f),
+            style = Stroke(width = 1.dp.toPx()),
+        )
+    }
+
+    // Caliper crosshair: four arms extend from the bezel outward during FOCUS.
+    if (focus > 0f) {
+        val armInner = r * 1.34f
+        val armOuter = r * (1.34f + 0.34f * focus)
+        for (direction in 0 until 4) {
+            val angle = direction * 90f * (PI.toFloat() / 180f)
+            val cosA = cos(angle)
+            val sinA = sin(angle)
+            drawLine(
+                color = tickColor.copy(alpha = 0.34f * focus * alpha),
+                start = Offset(center.x + cosA * armInner, center.y + sinA * armInner),
+                end = Offset(center.x + cosA * armOuter, center.y + sinA * armOuter),
+                strokeWidth = 1.dp.toPx(),
+            )
+        }
+    }
+
+    // Rim glint travelling across the crown during FOCUS: an arc on the rim, not a light band
+    // across the face (a band reads as a rendering artifact on a machined surface).
+    if (focus > 0f && focus < 1f) {
+        drawArc(
+            color = Color.White.copy(alpha = (if (dark) 0.35f else 0.85f) * (1f - focus) * alpha),
+            startAngle = -90f + 360f * focus,
+            sweepAngle = 34f,
+            useCenter = false,
+            topLeft = Offset(center.x - r * 0.985f, center.y - r * 0.985f),
+            size = Size(r * 1.97f, r * 1.97f),
+            style = Stroke(width = 2.5.dp.toPx()),
+        )
+    }
+
+    // Three calibration points flashing on the graduation ring.
     for (glint in 0..2) {
         val pulse = StartupTimeline.glintPulse(t, glint)
         if (pulse <= 0f) continue
         val angle = (-58f + glint * 58f) * (PI.toFloat() / 180f)
-        val gr = r * 1.52f
+        val gr = r * 1.50f
         val gx = center.x + cos(angle) * gr
         val gy = center.y + sin(angle) * gr
-        val arm = r * 0.14f * pulse
+        val arm = r * 0.10f * pulse
         val glintColor = if (glint == 1) deep else warm
-        drawLine(glintColor.copy(alpha = 0.85f * pulse * alpha), Offset(gx - arm, gy), Offset(gx + arm, gy), 1.6f * density * 0.5f)
-        drawLine(glintColor.copy(alpha = 0.85f * pulse * alpha), Offset(gx, gy - arm), Offset(gx, gy + arm), 1.6f * density * 0.5f)
+        drawLine(glintColor.copy(alpha = 0.9f * pulse * alpha), Offset(gx - arm, gy), Offset(gx + arm, gy), 1.5f.dp.toPx())
+        drawLine(glintColor.copy(alpha = 0.9f * pulse * alpha), Offset(gx, gy - arm), Offset(gx, gy + arm), 1.5f.dp.toPx())
     }
 }

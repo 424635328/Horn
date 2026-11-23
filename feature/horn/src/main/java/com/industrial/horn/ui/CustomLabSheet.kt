@@ -1,6 +1,7 @@
 package com.industrial.horn.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
@@ -13,14 +14,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -34,20 +33,26 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.industrial.horn.audio.CustomHornProfile
 import com.industrial.horn.feature.R
-import com.industrial.horn.ui.theme.AppleGlassSurface
-import com.industrial.horn.ui.theme.AppleRadii
-import com.industrial.horn.ui.theme.GlassCapsuleSlider
-import com.industrial.horn.ui.theme.HornCream
-import com.industrial.horn.ui.theme.HornInk
+import com.industrial.horn.ui.theme.EngravedRule
+import com.industrial.horn.ui.theme.HornRadii
+import com.industrial.horn.ui.theme.HornText
+import com.industrial.horn.ui.theme.InstrumentActionKey
+import com.industrial.horn.ui.theme.InstrumentSlider
+import com.industrial.horn.ui.theme.InstrumentToggle
+import com.industrial.horn.ui.theme.LocalHornColors
 
 /**
- * Pro Sound Lab. All sliders write the real profile into the audio engine; Save only persists the
- * profile to DataStore, Reset restores and persists the factory preset.
+ * Pro Sound Lab. Every slider writes the real profile into the audio engine; Save only persists
+ * the profile to DataStore, Reset restores and persists the factory preset.
+ *
+ * The sheet is a calibration panel: engraved captions, numbered plates, machined sliders and a
+ * hold-to-preview key. No glass, no blur — the sheet is the same material as the instrument.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -61,20 +66,20 @@ fun CustomLabSheet(
     onReset: () -> Unit,
     onDismiss: () -> Unit,
 ) {
+    val colors = LocalHornColors.current
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        containerColor = LabSurface,
-        contentColor = HornCream,
+        containerColor = colors.panel,
+        contentColor = colors.textPrimary,
         dragHandle = {
-            Surface(
+            Box(
                 modifier =
                     Modifier
                         .padding(top = 10.dp)
-                        .background(HornCream.copy(alpha = 0.25f), RoundedCornerShape(50))
-                        .height(4.dp)
-                        .fillMaxWidth(0.18f),
-                color = Color.Transparent,
-            ) {}
+                        .background(colors.hairlineStrong, RoundedCornerShape(2.dp))
+                        .height(3.dp)
+                        .fillMaxWidth(0.14f),
+            )
         },
     ) {
         Column(
@@ -82,10 +87,10 @@ fun CustomLabSheet(
                 Modifier
                     .fillMaxWidth()
                     .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 22.dp)
-                    .padding(bottom = 28.dp)
+                    .padding(horizontal = 20.dp)
+                    .padding(bottom = 26.dp)
                     .testTag("custom_lab_sheet"),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -95,14 +100,20 @@ fun CustomLabSheet(
                 Column {
                     Text(
                         text = stringResource(R.string.custom_lab_title),
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = HornCream,
+                        color = colors.textPrimary,
+                        style =
+                            TextStyle(
+                                fontSize = 22.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = (-0.2).sp,
+                            ),
                     )
+                    Spacer(modifier = Modifier.height(3.dp))
                     Text(
                         text = stringResource(R.string.custom_lab_subtitle),
-                        color = LabMuted,
-                        fontSize = 12.sp,
+                        color = colors.textSecondary,
+                        style = HornText.Data,
+                        modifier = Modifier.widthIn(max = 280.dp),
                     )
                 }
                 TextButton(onClick = onDismiss) {
@@ -110,7 +121,8 @@ fun CustomLabSheet(
                 }
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            EngravedRule(accent = accent)
+
             LabSlider(
                 label = stringResource(R.string.custom_primary_frequency),
                 value = profile.primaryFrequencyHz,
@@ -127,21 +139,14 @@ fun CustomLabSheet(
                 accent = accent,
                 onValueChange = { onProfileChange(profile.copy(secondaryFrequencyRatio = it)) },
             )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                Text(
-                    text = stringResource(R.string.custom_dual_tone),
-                    color = HornCream,
-                    fontSize = 14.sp,
-                )
-                Switch(
-                    checked = profile.dualTone,
-                    onCheckedChange = { onProfileChange(profile.copy(dualTone = it)) },
-                )
-            }
+
+            InstrumentToggle(
+                checked = profile.dualTone,
+                accent = accent,
+                onCheckedChange = { onProfileChange(profile.copy(dualTone = it)) },
+                label = stringResource(R.string.custom_dual_tone),
+            )
+
             LabSlider(
                 label = stringResource(R.string.custom_harmonics),
                 value = profile.harmonicRichness,
@@ -175,13 +180,13 @@ fun CustomLabSheet(
                 onValueChange = { onProfileChange(profile.copy(saturation = it)) },
             )
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(4.dp))
             val previewDescription = stringResource(R.string.custom_preview_description)
             Box(
                 modifier =
                     Modifier
                         .fillMaxWidth()
-                        .height(54.dp)
+                        .height(52.dp)
                         .semantics {
                             role = Role.Button
                             contentDescription = previewDescription
@@ -198,57 +203,43 @@ fun CustomLabSheet(
                             }
                         },
             ) {
-                AppleGlassSurface(
-                    modifier = Modifier.fillMaxSize(),
-                    shape = RoundedCornerShape(AppleRadii.Capsule),
-                    rimAccent = accent,
-                    frostAlpha = 0.18f,
+                Box(
+                    modifier =
+                        Modifier
+                            .fillMaxSize()
+                            .background(accent.copy(alpha = if (colors.isDark) 0.14f else 0.08f))
+                            .border(
+                                width = 1.dp,
+                                color = accent,
+                                shape = RoundedCornerShape(HornRadii.Key),
+                            ),
+                    contentAlignment = Alignment.Center,
                 ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center,
-                    ) {
-                        Text(
-                            text = stringResource(R.string.custom_preview),
-                            color = accent,
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 1.6.sp,
-                        )
-                    }
+                    Text(
+                        text = stringResource(R.string.custom_preview),
+                        color = accent,
+                        style = HornText.PlateLabel,
+                    )
                 }
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                OutlinedButton(
+                InstrumentActionKey(
+                    label = stringResource(R.string.custom_reset),
+                    accent = accent,
                     onClick = onReset,
                     modifier = Modifier.weight(1f),
-                ) {
-                    Text(stringResource(R.string.custom_reset))
-                }
-                Surface(
-                    modifier =
-                        Modifier
-                            .weight(1f)
-                            .height(40.dp),
-                    shape = RoundedCornerShape(50),
-                    color = accent,
-                ) {
-                    TextButton(
-                        onClick = onSave,
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Text(
-                            text = stringResource(R.string.custom_save),
-                            color = HornInk,
-                            fontWeight = FontWeight.Bold,
-                        )
-                    }
-                }
+                )
+                InstrumentActionKey(
+                    label = stringResource(R.string.custom_save),
+                    accent = accent,
+                    onClick = onSave,
+                    filled = true,
+                    modifier = Modifier.weight(1f),
+                )
             }
         }
     }
@@ -263,7 +254,7 @@ private fun LabSlider(
     accent: Color,
     onValueChange: (Float) -> Unit,
 ) {
-    GlassCapsuleSlider(
+    InstrumentSlider(
         value = value,
         valueRange = valueRange,
         onValueChange = onValueChange,
@@ -273,6 +264,3 @@ private fun LabSlider(
         modifier = Modifier.fillMaxWidth(),
     )
 }
-
-private val LabSurface = Color(0xFF101519)
-private val LabMuted = Color(0xFFA8B0B6)

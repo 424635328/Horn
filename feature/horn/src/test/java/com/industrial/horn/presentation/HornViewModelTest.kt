@@ -14,6 +14,7 @@ import com.industrial.horn.audio.InterruptionReason
 import com.industrial.horn.audio.OutputMode
 import com.industrial.horn.data.HornPreferencesRepository
 import com.industrial.horn.data.HornSettings
+import com.industrial.horn.data.ThemeMode
 import com.industrial.horn.testing.MainDispatcherRule
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -66,6 +67,72 @@ class HornViewModelTest {
 
             assertEquals(HornType.CAR, viewModel.uiState.value.selectedHorn)
             assertTrue(viewModel.uiState.value.preferencesLoaded)
+        }
+
+    @Test
+    fun coldStartRestoresPersistedThemeMode() =
+        runTest(mainDispatcherRule.dispatcher) {
+            val preferences =
+                FakePreferencesRepository(
+                    initialSettings = HornSettings(themeMode = ThemeMode.DARK),
+                )
+            val viewModel = HornViewModel(FakeHornSession(), preferences)
+
+            runCurrent()
+
+            assertEquals(ThemeMode.DARK, viewModel.uiState.value.themeMode)
+            assertTrue(viewModel.uiState.value.preferencesLoaded)
+        }
+
+    @Test
+    fun themeCycleWalksAutoDayNightAndPersistsEveryStep() =
+        runTest(mainDispatcherRule.dispatcher) {
+            val preferences = FakePreferencesRepository()
+            val viewModel = HornViewModel(FakeHornSession(), preferences)
+            runCurrent()
+            assertEquals(ThemeMode.SYSTEM, viewModel.uiState.value.themeMode)
+
+            val walked = mutableListOf<ThemeMode>()
+            repeat(4) {
+                viewModel.onCycleThemeMode()
+                walked += viewModel.uiState.value.themeMode
+            }
+
+            assertEquals(
+                listOf(ThemeMode.LIGHT, ThemeMode.DARK, ThemeMode.SYSTEM, ThemeMode.LIGHT),
+                walked,
+            )
+            runCurrent()
+            assertEquals(ThemeMode.LIGHT, preferences.lastThemeMode)
+        }
+
+    @Test
+    fun themeSelectionIsSynchronousWhilePersistenceIsDeferred() =
+        runTest(mainDispatcherRule.dispatcher) {
+            val preferences = FakePreferencesRepository()
+            val viewModel = HornViewModel(FakeHornSession(), preferences)
+            runCurrent()
+
+            viewModel.onSelectThemeMode(ThemeMode.LIGHT)
+
+            // The palette must flip on the tap frame, before the DataStore write is scheduled.
+            assertEquals(ThemeMode.LIGHT, viewModel.uiState.value.themeMode)
+
+            runCurrent()
+            assertEquals(ThemeMode.LIGHT, preferences.lastThemeMode)
+        }
+
+    @Test
+    fun selectingTheCurrentThemeModeDoesNotTouchStorage() =
+        runTest(mainDispatcherRule.dispatcher) {
+            val preferences = FakePreferencesRepository()
+            val viewModel = HornViewModel(FakeHornSession(), preferences)
+            runCurrent()
+
+            viewModel.onSelectThemeMode(ThemeMode.SYSTEM)
+            runCurrent()
+
+            assertEquals(null, preferences.lastThemeMode)
         }
 
     @Test
@@ -570,6 +637,7 @@ class HornViewModelTest {
         var lastSpace: AcousticSpace? = null
         var lastCustomProfile: CustomHornProfile? = null
         var lastVolumeTrigger: Boolean? = null
+        var lastThemeMode: ThemeMode? = null
 
         override suspend fun setSelectedHorn(type: HornType) {
             writeCalls++
@@ -590,6 +658,11 @@ class HornViewModelTest {
         override suspend fun setVolumeTriggerEnabled(enabled: Boolean) {
             lastVolumeTrigger = enabled
             settingsState.value = settingsState.value.copy(volumeTriggerEnabled = enabled)
+        }
+
+        override suspend fun setThemeMode(mode: ThemeMode) {
+            lastThemeMode = mode
+            settingsState.value = settingsState.value.copy(themeMode = mode)
         }
 
         override suspend fun resetCustomProfile() {
