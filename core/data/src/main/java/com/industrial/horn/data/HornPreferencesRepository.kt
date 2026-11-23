@@ -29,6 +29,8 @@ interface HornPreferencesRepository {
 
     suspend fun setVolumeTriggerEnabled(enabled: Boolean)
 
+    suspend fun setThemeMode(mode: ThemeMode)
+
     suspend fun resetCustomProfile()
 }
 
@@ -90,6 +92,12 @@ class DataStoreHornPreferencesRepository(
         setCustomProfile(CustomHornProfile.DEFAULT)
     }
 
+    override suspend fun setThemeMode(mode: ThemeMode) {
+        dataStore.edit { preferences ->
+            preferences[THEME_MODE_KEY] = mode.storageKey
+        }
+    }
+
     private fun toSettings(preferences: Preferences): HornSettings {
         val default = CustomHornProfile.DEFAULT
         val custom =
@@ -110,6 +118,7 @@ class DataStoreHornPreferencesRepository(
             acousticSpace = AcousticSpace.fromStorageKey(preferences[ACOUSTIC_SPACE_KEY]),
             customProfile = custom,
             volumeTriggerEnabled = preferences[VOLUME_TRIGGER_KEY] ?: false,
+            themeMode = ThemeMode.fromStorageKey(preferences[THEME_MODE_KEY]),
         )
     }
 
@@ -117,6 +126,7 @@ class DataStoreHornPreferencesRepository(
         val SELECTED_HORN_KEY = stringPreferencesKey("selected_horn")
         val ACOUSTIC_SPACE_KEY = stringPreferencesKey("acoustic_space")
         val VOLUME_TRIGGER_KEY = booleanPreferencesKey("volume_trigger_enabled")
+        val THEME_MODE_KEY = stringPreferencesKey("theme_mode")
         val CUSTOM_PRIMARY_KEY = floatPreferencesKey("custom_primary_hz")
         val CUSTOM_RATIO_KEY = floatPreferencesKey("custom_secondary_ratio")
         val CUSTOM_DUAL_KEY = booleanPreferencesKey("custom_dual_tone")

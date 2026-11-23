@@ -15,6 +15,7 @@ import com.industrial.horn.audio.NoOpAudioSafetyMonitor
 import com.industrial.horn.audio.OutputMode
 import com.industrial.horn.data.HornPreferencesRepository
 import com.industrial.horn.data.HornSettings
+import com.industrial.horn.data.ThemeMode
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -84,6 +85,7 @@ class HornViewModel(
                     acousticSpace = settings.acousticSpace,
                     customProfile = settings.customProfile,
                     volumeTriggerEnabled = settings.volumeTriggerEnabled,
+                    themeMode = settings.themeMode,
                     preferencesLoaded = true,
                 )
             }
@@ -236,6 +238,27 @@ class HornViewModel(
         _uiState.update { it.copy(volumeTriggerEnabled = enabled) }
         viewModelScope.launch {
             runCatching { preferencesRepository.setVolumeTriggerEnabled(enabled) }
+        }
+    }
+
+    /**
+     * Advances the theme position AUTO → DAY → NIGHT → AUTO. A single key cycles the frequent
+     * action; [onSelectThemeMode] is the explicit three-position path.
+     */
+    fun onCycleThemeMode() {
+        onSelectThemeMode(_uiState.value.themeMode.next())
+    }
+
+    /**
+     * Pins the cockpit palette. The state update is synchronous so the theme flips on the same
+     * frame as the tap; persistence follows asynchronously and a failure only costs the next
+     * cold start, never the current interaction.
+     */
+    fun onSelectThemeMode(mode: ThemeMode) {
+        if (_uiState.value.themeMode == mode) return
+        _uiState.update { it.copy(themeMode = mode) }
+        viewModelScope.launch {
+            runCatching { preferencesRepository.setThemeMode(mode) }
         }
     }
 

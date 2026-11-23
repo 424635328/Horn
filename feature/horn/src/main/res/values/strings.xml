@@ -2,7 +2,16 @@
 <resources>
     <string name="app_name">Horn</string>
     <string name="brand_name">HORN</string>
-    <string name="brand_tagline">FIVE-VOICE HORN SYSTEM</string>
+    <string name="brand_tagline">PRECISION INSTRUMENT</string>
+    <string name="plate_voice">VOICE</string>
+    <string name="plate_instrument">INSTRUMENT</string>
+    <string name="plate_telemetry">TELEMETRY</string>
+    <string name="theme_mode_system">AUTO</string>
+    <string name="theme_mode_light">DAY</string>
+    <string name="theme_mode_dark">NIGHT</string>
+    <string name="theme_mode_description">Theme: %1$s. Tap to cycle.</string>
+    <string name="theme_choose_action">Choose theme</string>
+    <string name="lab_key_description">Open Pro Sound Lab</string>
     <string name="voice_selector_label">HORN VOICE</string>
     <string name="horn_type_car">Car</string>
     <string name="horn_type_train">Train</string>

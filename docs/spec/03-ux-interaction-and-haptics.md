@@ -1,16 +1,17 @@
-# 03 · 交互状态机、视觉降级与触觉规约
+# 03 · 交互状态机、座舱视觉规范与触觉规约
 
 - 状态：Living Spec
-- 日期：2026-11-22
+- 日期：2026-11-23
 
-> 关联 ADR：[ADR-0008 Apple Glass 设计系统与弹簧动效](adr/ADR-0008-apple-glass-design-system-and-spring-motion.md)
+> 关联 ADR：[ADR-0011 精密汽车座舱：材质、仪表几何与主题三挡](adr/ADR-0011-precision-automotive-cockpit.md)
+> （取代 [ADR-0008](adr/ADR-0008-apple-glass-design-system-and-spring-motion.md)，状态 Superseded）
 >
-> 本文约束 `:feature:horn` 的手势与安全交互、`:core:designsystem` 的 Apple Glass 设计 Token 与渲染分级、
+> 本文约束 `:feature:horn` 的手势与安全交互、`:core:designsystem` 的座舱设计 Token 与仪表几何、
 > `:core:haptic` 的触觉指纹。修改任一契约 MUST 同步更新本文与相关测试。
 
 ## 1. 主按钮指针手势状态机
 
-实现：`feature/horn/src/main/java/com/industrial/horn/ui/HornButton.kt`（`awaitEachGesture` + 双 `pointerInput`）。
+实现：`feature/horn/src/main/java/com/industrial/horn/ui/HornInstrumentPad.kt`（`awaitEachGesture` + 双 `pointerInput`）。
 圆形热区判定为几何圆（`isInsideCircle`），透明角落 MUST NOT 触发鸣笛。
 
 ```mermaid
@@ -59,17 +60,17 @@ stateDiagram-v2
 `feature/horn/src/main/java/com/industrial/horn/ui/SafetyUi.kt`、
 `feature/horn/src/main/java/com/industrial/horn/presentation/HornViewModel.kt`。
 
-1. **零音量智能引导**：按压时媒体音量 == 0 → 灵动岛横幅展示 `zero_volume_prompt`（文案见
-   `feature/horn/src/main/res/values/strings.xml`），一键 `AudioSafetyPolicy.sixtyPercentVolume(max)` 恢复 60%；横幅按优先级即时收起。
+1. **零音量智能引导**：按压时媒体音量 == 0 → 状态轨下方展开 `zero_volume_prompt` 警示条（文案见
+   `feature/horn/src/main/res/values/strings.xml`），一键 `AudioSafetyPolicy.sixtyPercentVolume(max)` 恢复 60%；点击或恢复后警示条即时移出组合树。
 2. **耳机护耳限幅**：`earProtectionActive = headphonesConnected && volumeFraction > 0.7` 成立时，
-   引擎侧下发保护增益（≈ −6 dB，`PROTECTION_GAIN`），横幅展示 `ear_protection_badge` 徽章。摘下耳机 MUST 自动解除。
-3. **横幅优先级**（`DynamicPillBanner`，唯一悬浮胶囊，禁多弹窗）：零音量提示 > 护耳徽章 > 引擎/声场状态。
+   引擎侧下发保护增益（≈ −6 dB，`PROTECTION_GAIN`），状态轨右端展示 `ear_protection_badge` 徽章。摘下耳机 MUST 自动解除。
+3. **信息优先级**（单一状态轨 + 单一警示条，禁多弹窗）：警示条（零音量）> 状态轨徽章（护耳）> 状态轨状态令牌（引擎/声场/采样率）。
 4. 音量监听经 `AudioDeviceCallback`（`AndroidAudioSafetyMonitor.kt`）；策略计算纯函数化以便单测（`AudioSafetyPolicyTest`）。
 5. **心理声学输出模式感知（v3.6）**：耳机检测结果 MUST 同步驱动引擎输出级——耳机连接 →
    `OutputMode.HEADPHONE_FULL_RANGE`（全频双耳宽度链），未连接 → `OutputMode.SPEAKER_VBS`
    （外放虚拟低音链）；模式经 `HornSession.setOutputMode` 下发（20–50ms 交叉淡化），并回显于
-   Debug HUD（`Speaker VBS` / `Headphone Full-Range`）与遥测 `AudioTelemetry.outputMode`。
-6. **声场四档（v3.6）**：`AcousticSpaceSelector` 由三档扩为四档 `GlassSegmentedControl`
+   Debug HUD（`Speaker VBS` / `Headphone Full-Range`）、遥测 `AudioTelemetry.outputMode` 与座舱遥测面板（`OUTPUT` 行）。
+6. **声场四档（v3.6）**：`AcousticSpaceSelector` 为一行四个 `TactileKeycap`
    （街道 / 隧道 / 旷野 / 地库），新增 `GARAGE(storageKey="garage")`；文案键
    `acoustic_space_garage`（`values`/`values-zh`）；旧数据未知键 MUST 回落 `STREET`。
 
@@ -81,98 +82,129 @@ stateDiagram-v2
 - 开关开启：`ACTION_DOWN && repeatCount == 0` 起音；重复 DOWN 仅消费不重触发；`ACTION_UP` 止音；其余事件放行。
 - 其他按键 MUST 永远放行。开关状态由 `:core:data` 持久化（`volumeTriggerEnabled`）。
 
-## 5. Apple Glass 设计 Token（`:core:designsystem`）
+## 5. Precision Cockpit 设计 Token（`:core:designsystem`）
 
-实现：`core/designsystem/src/main/java/com/industrial/horn/ui/theme/AppleMotion.kt`、
-`core/designsystem/src/main/java/com/industrial/horn/ui/theme/AppleGlass.kt`、
-`core/designsystem/src/main/java/com/industrial/horn/ui/theme/AmbientMeshBackground.kt`、
-`core/designsystem/src/main/java/com/industrial/horn/ui/theme/GlassComponents.kt`、
-`core/designsystem/src/main/java/com/industrial/horn/ui/theme/AmbientPalettes.kt`。
+实现：`core/designsystem/src/main/java/com/industrial/horn/ui/theme/` 下的
+`Color.kt`、`Type.kt`、`Theme.kt`、`Motion.kt`、`CockpitCanvas.kt`、`MachinedPanel.kt`、
+`TactileKeycap.kt`、`InstrumentDial.kt`、`PrecisionExpressionGauge.kt`、`InstrumentSlider.kt`。
 
-### 5.1 同心圆角法则（Concentric Radii）
+### 5.1 双材质色板（v4.0 冻结）
 
-外层容器圆角 MUST 满足 `R_outer = R_inner + padding`（`AppleRadii.outerOf`）。常用值：
-`Capsule/Orb = 50dp`、`Sheet = 28dp`、`Panel = 22dp`、`Tile = 16dp`、`Inner = 12dp`。
+| Token | 语义 | Ceramic Daylight | Stealth Carbon |
+|---|---|---|---|
+| `canvas` | 全屏基底 | `#F3F3EE` | `#0D0F12` |
+| `grid` | 工程网格刻线 | `#E2E2DA` | `#1C2027` |
+| `panel` | 标准面板 | `#FFFFFF` | `#16191F` |
+| `panelRaised` | 凸起面板 / 仪表中心盘 | `#FFFFFF` | `#1D2129` |
+| `panelSunken` | 凹陷面板 / 滑槽 | `#EAEAE4` | `#101318` |
+| `hairline` | 面板发丝边 | `#DFDFD8` | `#2C313C` |
+| `hairlineStrong` | 刻度/交互键边框 | `#C4C4BC` | `#3C4250` |
+| `textPrimary` | 主文本 | `#141619` | `#F4F6F9` |
+| `textSecondary` | 次文本 / 刻度数字 | `#626770` | `#8C94A3` |
+| `textTertiary` | 微标签 / 未点亮刻度 | `#6F747C` | `#7C8493` |
+| `dialTop` / `dialBottom` | 车削盘面 | `#F0F0E9` / `#D5D5CD` | `#2C333D` / `#12151A` |
+| `bezelTop` / `bezelBottom` | 表圈刻度带 | `#EDEDE6` / `#E0E0D8` | `#2A323D` / `#1E242C` |
+| `fault` | 故障态 | `#C62E20` | `#FF6A5A` |
+| `protection` | 护耳态 | `#8A5A00` | `#FFC24D` |
 
-### 5.2 动态数值排版
+色板只在 `Color.kt` 定义一次，并通过 `LocalHornColors`（`staticCompositionLocalOf`）下发；
+Material 3 `ColorScheme` 同步映射到同一组 canvas/panel 值，保证 Material 原生组件与自绘仪表同材质。
 
-所有动态数值（Hz / ms / dB / xrun / µs）MUST 启用等宽数字：`TextStyle.fontFeatureSettings = "tnum"`
-（`AppleNumbers.TABULAR`），杜绝数值跳动引发的左右抖动。
+### 5.2 对比度门禁（机器执法）
 
-### 5.3 弹簧物理预设（`AppleMotion`）
+`app/src/test/java/com/industrial/horn/ui/theme/CockpitPaletteTest.kt` 用 WCAG 2.2 相对亮度公式断言：
+
+- `textPrimary` / `textSecondary` 在 canvas、panel、sunken 上 ≥ **4.5:1**；
+- `textTertiary` 在面板上 ≥ 4.5:1、在 canvas 上 ≥ 3:1（微标签属于装饰性小字，但不允许低于大文本阈值）；
+- 5 个音色强调色在各自面板与 canvas 上 ≥ 4.5:1；
+- `fault` / `protection` 在两种表面上 ≥ 4.5:1；
+- **正控**：黑/白 = 21.0:1（±0.05）；**负控**：品牌琥珀 `#FFB547` 在白底仅 1.76:1，必须被判红，
+  否则「全绿」可能只是公式失效。
+
+### 5.3 五音色仪表强调色（深浅双值）
+
+单一中调无法同时在白面板与碳黑面板过 4.5:1，因此每个音色给出成对值，由 `InstrumentAccent.resolve(dark)` 解析：
+
+| 音色 | Daylight | Carbon |
+|---|---|---|
+| Car | `#A85B00` | `#FFB547` |
+| Train | `#B3201A` | `#FF8A66` |
+| E-Bike | `#0F766E` | `#43E3C0` |
+| Motorcycle | `#1D4ED8` | `#82B8FF` |
+| Custom / Lab | `#6D28D9` | `#C9A6FF` |
+
+映射入口：`:feature:horn` 的 `HornType.visualStyle(dark)`（保持 `:core:designsystem` 零项目依赖）。
+五色在 sRGB 空间两两距离 MUST ≥ 48（`CockpitPaletteTest` 断言），避免"五个音色两个颜色"。
+
+### 5.4 圆角与动效（`HornRadii` / `HornMotion`）
+
+圆角是机加工尺度，不是消费级胶囊：`Plate = 16dp`、`Instrument = 12dp`、`Key = 9dp`、
+`Chip = 7dp`、`Well = 5dp`；嵌套仍遵守 `R_outer = R_inner + padding`（`HornRadii.outerOf`）。
 
 | 预设 | dampingRatio / stiffness | 用途 |
 |---|---|---|
-| `SnappySpring` | 0.72 / 900 | 高响应切换（胶囊滑动、开关） |
-| `FluidSpring` | 0.82 / 420 | 流畅展开（横幅、BottomSheet） |
-| `TactileOrbSpring` | 0.55 / 650 | 主按钮物理按压（细腻回弹） |
-| `CapsuleSpring` | 0.78 / 620 | 滑动指示胶囊行程 |
+| `KeySpring` | 0.90 / 1500 | 键帽/主盘按压（短行程、无明显回弹） |
+| `IndexSpring` | 0.88 / 1050 | 选择指示片位移 |
+| `NeedleSpring` | 0.62 / 520 | 表针（允许一次物理过冲） |
+| `PanelSpring` | 0.92 / 620 | 面板/工坊展开 |
+| `RailSpring` | 1.00 / 900 | 警示条淡入淡出 |
 
-交互态 MUST NOT 使用线性 `tween`。橡皮筋非线性阻尼：`AppleMotion.rubberBand(offset, limit, coefficient = 0.55)`，
-越界位移渐近收敛于 `2 × limit`。
+交互态 MUST NOT 使用线性 `tween`（颜色过渡除外，颜色不是位移）。
 
-### 5.4 五车型环境光色板（深浅双主题独立精调）
+### 5.5 仪表几何（冻结比例，`GaugeGeometry`）
 
-| 车型 | 浅色主题 | 深色主题 | meshSoft |
-|---|---|---|---|
-| 汽车 Car | 钛金银 `#8A9BA8` | 深海蓝 `#2E5F86` | `#B8C4CC` |
-| 火车 Train | 琥珀金 `#C98F2E` | 熔岩铜 `#B4562A` | `#E2B263` |
-| 电车 E-Bike | 极光青 `#2FA8B8` | 翡翠绿 `#1F8A5C` | `#6FD6DC` |
-| 摩托车 Moto | 竞速红 `#C43A32` | 炽热橙 `#D96A22` | `#E07B62` |
-| 自定义 Custom | 星云紫 `#7B5FC9` | 虹彩靛 `#4B3FA8` | `#A78BE8` |
+| 元素 | 半径比例 | 规格 |
+|---|---|---|
+| 车削盘面 | `0.858 R` | 径向金属渐变 + 交替车削环 + 72 齿滚花边 + 4 颗紧固螺钉 |
+| 表圈刻度带 | `0.862–0.925 R` | 240° 刻度：每 10° 一小格、每 60° 一大格 |
+| 压力环 | `0.932–1.000 R` | **60 格** RMS 压力刻度，每 5 格加重；点亮格数 `= round(rms × 60)` |
+| 中心盘 | `0.46 D` 直径 | 不透明，覆盖表针轴心；承载图标 / 标签 / `EXP` 读数 |
+| 表针 | 尾 `-0.20 R` → 尖 `0.905 R` | 2dp 主色 + 4dp 深色描边保证浅色盘面对比 |
 
-映射入口：`AmbientPalettes.of(AmbientKey)`；`HornType → AmbientKey` 由 `:feature:horn` 的
-`HornType.ambientKey()` 完成（保持 `:core:designsystem` 零项目依赖）。
+Expression 角度：`angle = 150° + (expression + 1)/2 × 240°`，即 0 指正上方（270°），−1 → 150°、+1 → 30°；
+正向半圈带一条细强调弧（z 序在刻度之下），读数 MUST 为直连（禁指针缓动滞后于手指）。
 
-### 5.5 `AppleGlassSurface` 三层构造
-
-1. **背景虚化层**：对背后 `AmbientMeshSpec` 图层做真实重绘并施加 `RenderEffect.createBlurEffect(22px)`
-   （经 `GlassCapabilities.blurAvailable` 探测），MUST NOT 仅模糊自身前景；
-2. **磨砂层**：半透明 frost（白/黑双层 scrim）+ **1.5% 程序化微颗粒**（固定种子 LCG，160 点，
-   `drawPoints` 单次批量绘制）抗 8-bit 渐变色带；
-3. **方向性镜面描边**：1dp 左上亮/右下柔线性渐变；API 33+ 且 `GlassCapabilities.agslAvailable` 时
-   改用 AGSL `RuntimeShader` 边缘微折射光晕（`RIM_SHADER`）。
-
-### 5.6 会呼吸的环境光网格（`AmbientMeshBackground`）
-
-- 三球轨道光斑（26s 周期慢速漂移）+ 网格 + 同心参考环；鸣笛 RMS 包络驱动光斑半径膨胀（压力系数
-  `1 + 0.45 × rms`）透射过玻璃面板。
-- **相位帧率治理**：呼吸相位 MUST 经 `derivedStateOf` 量化（`PHASE_STEPS = 480`，约 18.75 次有效重绘/秒），
-  使全屏重绘不随 60/120Hz 屏幕刷新率空转；量化值是动画时钟的纯函数，Roborazzi 确定性不受影响。
-  `rememberAmbientMeshSpec` 产出的 spec MUST 同时供全屏背景与各玻璃面板虚化层共用，保证两层相位一致。
-- **生命周期契约**：`ON_STOP`/不可见 MUST 停播无限动画（`resumed` 标志门控 `rememberInfiniteTransition`），
-  息屏/后台零功耗。
-- **无障碍**：`LocalReducedMotion == true` 时禁用呼吸动画，保留静态构图。
-
-### 5.7 通用玻璃组件契约
+### 5.6 组件契约
 
 | 组件 | 行为契约 |
 |---|---|
-| `GlassSegmentedControl` | 指示胶囊以 `CapsuleSpring` 滑移；速度形变经 `graphicsLayer` 延迟读取（`velocity`）；每次确认选择回调 `onTick()` 供 CLOCK_TICK 触觉；语义 `Role.RadioButton` + `Selected` + 每项 testTag |
-| `GlassCapsuleSlider` | 玻璃槽 + 渐变填充条；拖动/点击均可赋值；越界经 `rubberBand` 橡皮筋视觉拉伸；数值 MUST 用 tnum 展示 |
-| `DynamicPillBanner` | 灵动岛式悬浮胶囊；`animateContentSize` 弹簧形变切换内容；由宿主按优先级择一渲染 |
+| `CockpitCanvas` | 工程网格 + 四角卡尺标记 + 暗角；网格 Path 在 `drawWithCache` 内一次构建；仅鸣笛时叠加扫描带（`State<Float>` 只被 draw 读取，不进组合层） |
+| `MachinedPanel` | 1dp 高光缝 + 1dp 底缝 + 发丝边 + 四角刻度 + 可选强调索引条；`raised` / `sunken` 两态 |
+| `TactileKeycap` | 键帽：选中=强调色边框 + 强调色标签 + 2dp 索引条（三重冗余，非仅颜色）；按压 0.97 行程；语义 `Role.RadioButton` + `Selected` + 每项 testTag |
+| `InstrumentToggle` | 机械拨杆开关：`toggleableState` + `stateDescription`，默认关闭即系统音量键行为零改变 |
+| `InstrumentDial` | 车削盘面 + 压力环 + 表圈 + 中心盘；`rmsProvider`/`expressionProvider` 只在 draw 内读取 |
+| `PrecisionExpressionGauge` | 240° 动圈刻度 + 直连表针 + 正向强调弧；无自身动画 |
+| `InstrumentSlider` | 凹陷滑槽 + 印刷刻度 + 硬边填充 + 滚花滑钮；拖动/点击均可赋值；数值 MUST 用 `HornText.Data`（tnum） |
 
-## 6. 视觉与硬件能力分级兼容矩阵
+### 5.7 主题三挡与系统栏极性
 
-| 能力 | API 33+ | API 31–32 | API 26–30 |
-|---|---|---|---|
-| 玻璃背景虚化 | `RenderEffect` 22px | `RenderEffect` 22px | 半透明磨砂层（无 blur） |
-| 镜面描边 | AGSL `RuntimeShader` 微折射 | 线性渐变描边 | 线性渐变描边 |
-| 声压光晕 `AudioAura` | AGSL 金属光场 | Canvas 高质量降级 | Canvas 高质量降级 |
-| 主按钮/玻璃组件 | 全量 | 全量 | 全量（磨砂观感） |
+- `ThemeMode { SYSTEM, LIGHT, DARK }` 持久化于 DataStore，键值 `system|light|dark`（稳定字符串，
+  `fromStorageKey` 对未知键回落 `SYSTEM`）；`ThemeMode.next()` 为 AUTO → DAY → NIGHT 三挡循环。
+- 顶栏主题键：单击循环（`onCycleThemeMode`）；长按或 TalkBack 自定义动作打开三挡菜单
+  （`onSelectThemeMode`），保证偏好不依赖隐藏手势。
+- `MainActivity` 解析 `useDarkTheme` 后 MUST 同步 `WindowCompat.getInsetsController`
+  的 `isAppearanceLightStatusBars` / `isAppearanceLightNavigationBars`（edge-to-edge 下系统栏透明，
+  图标极性只能跟随解析后的主题，不能跟系统设置）。
 
-- 运行时 MUST 以 `GlassCapabilities`（`runCatching` 构造探测）为准，而非仅凭 SDK_INT——
-  模拟器/无头 JVM 上 AGSL 或 RenderEffect 可缺失，探测失败 MUST 优雅降级且绝不崩溃。
-- 测试可覆盖渲染档位：`LocalGlassRenderMode`（`AGSL`/`BLUR`/`CANVAS`），保证 Roborazzi 确定性。
+## 6. 渲染基线与窗口形态
+
+| 能力 | 全部 API 26–36 |
+|---|---|
+| 面板/仪表材质 | 纯色填充 + 线性/径向渐变 + 1px 描边，无模糊、无 AGSL、无 `RenderEffect` |
+| 3D 观感 | 高光缝 / 底缝 / 暗角 / 车削环（几何暗示，不是真实景深） |
+| 动效 | Compose spring + 单时钟 f(t)，无能力分级 |
+
+v4.0 显式移除毛玻璃与背景虚化：视觉不再依赖 `RuntimeShader`/`RenderEffect` 探测，
+同一套几何在模拟器、无头 JVM 与真机上逐像素一致，Roborazzi 基准不再因 GPU 能力分叉。
 
 ### 6.1 窗口形态断点（WindowSizeClass）
 
 | 形态 | 布局 | 实现 |
 |---|---|---|
-| Compact（竖屏单手） | 品牌头 + 主按钮居中 + 底部悬浮玻璃控制台 | `HornScreen` `compact_layout` |
-| Medium / Expanded（横屏/平板/折叠展开） | 左：品牌 + 玻璃控制岛 + 状态脚注；右：超大玻璃鸣笛球 | `HornScreen` `expanded_layout` |
+| Compact（竖屏单手） | 顶栏（品牌 + 主题键 + 工坊键）+ 状态轨 + 仪表盘 + 底部机加工控制台 + 脚注 | `HornScreen` `compact_layout` |
+| Medium / Expanded（横屏/平板/折叠展开） | 左：音色 + 声场控制台 + 遥测仪表盘；右：超大仪表盘 | `HornScreen` `expanded_layout` |
 
-大屏 MUST 零遮挡、零挤压；200% 无障碍大字体 MUST 零裁切（`ScreenshotMatrixTest` 1.35x 档覆盖）。
+大屏 MUST 零遮挡、零挤压；1.35× 无障碍大字体 MUST 零裁切（`ScreenshotMatrixTest` 1.35x 档覆盖 80 张基准）。
 
 ## 7. 触觉指纹规约（`:core:haptic`）
 
@@ -190,38 +222,42 @@ stateDiagram-v2
 | Custom | `1,10,28,6,20,6,18,5` | 125→50 | 中性克制节奏 |
 
 约束：`HapticPattern` 构造期 MUST 校验时序为正、振幅 ∈ [0,255] 且含非零脉冲（`require`）；
-`HapticSignatureTest` 锁定指纹差异性。`GlassSegmentedControl` 的选择刻度 SHOULD 使用
+`HapticSignatureTest` 锁定指纹差异性。`TactileKeycap` 的选择刻度 SHOULD 使用
 `CLOCK_TICK` 类细粒度反馈（由宿主 `:core:haptic` 注入）。
 
 ## 8. 零重组延迟读取规范（性能红线）
 
-- RMS 包络、Expression 位移、环境光相位、按钮按压缩放 MUST 经 `() -> Float` Provider 或
+- RMS 包络、Expression 位移、按压行程、扫描带相位 MUST 经 `() -> Float` Provider 或
   `State` 在 `drawWithCache`/`drawBehind`/`graphicsLayer` 内读取；MUST NOT 在高频更新时触发重组。
-- 环境光动画值经 `rememberInfiniteTransition` 的 `State<Float>` 直接供 draw 层消费（禁在组合层解包），
-  并经 `derivedStateOf` 量化封顶重绘频率（见 §5.6）。
+- 全屏网格 Path MUST 在 `drawWithCache` 内按尺寸构建一次；动画值 MUST 以 `State<Float>` 形式传入
+  draw 层（禁在组合层解包，否则 `drawWithCache` 会被逐帧重建）。
 - `rememberUpdatedState` 用于保持 Provider 新鲜而稳定（`HornScreen` 的 `rmsProvider`/`expressionProvider`）。
-- **稳定回调身份**：`HornScreen` 传入深层子树（`HornHero`/`GlassConsole` 等）的回调 MUST 以
+- **稳定回调身份**：`HornScreen` 传入深层子树（`InstrumentZone`/`CockpitDeck` 等）的回调 MUST 以
   `remember { { currentTarget() } }` 包装（目标经 `rememberUpdatedState` 转发），使父级重组
   （如遥测节拍）不会因 lambda 身份变化击穿子树的可跳过性（skippability）。
+- 文本（`EXP` 读数、字标字距）MUST 以 60ms 定时器采样更新：改字符串是排版操作，不属于帧时钟；
+  其余纯视觉属性仍逐帧。
 
 ## 9. 非目标（Non-Goals）
 
 - 不做自定义手势录制/宏；单按钮交互是产品灵魂，MUST NOT 复杂化。
 - 不做实时 FFT 频谱显示（时域示波器已满足调试需求）。
-- 不追求全机型真实物理模糊（低 API 以磨砂近似为已接受权衡）。
+- 不做毛玻璃 / 背景虚化 / 半透明堆叠（v4.0 明确移除，见 ADR-0011）。
 
 ## 10. 已知局限与权衡（Known Limitations & Trade-offs）
 
-- `RenderEffect` 背景虚化在低 GPU 设备有合成成本；以 22px 半径与面板级裁剪控制开销。
-- AGSL 微折射为屏幕空间近似，非真实光追；换取零依赖与确定性渲染。
-- 微颗粒以固定种子生成，放大看为规则噪点而非真随机；换取 Roborazzi 逐字节可复现。
+- 1px 发丝线与刻度在极低 dpi 设备上可能被渲染为 1.5–2px 灰边；以 `hairlineStrong` 与 ≥4.5:1 文本兜底可读性。
+- 车削环 / 滚花 / 螺钉是几何暗示而非真实金属反射；换取零 GPU 依赖与跨设备逐像素一致。
+- `FontFamily.Monospace` 在个别 OEM 字体下回退为比例数字；因此每个数值样式同时声明
+  `fontFeatureSettings = "tnum"`，即使字体回退也保持等宽数字。
 - Roborazzi 基准对系统字体光栅化敏感，跨平台差异 MUST 走 `update-screenshots.yml` Linux 重录 SOP（见 05 规约）。
 
-## 11. 开屏动画与启动体验（Optical Wake, v3.7）
+## 11. 开屏动画与启动体验（Cold-Start Calibration, v4.0；原 Optical Wake v3.7）
 
-> 关联决策：[ADR-0010 开屏动画 Optical Wake：单时钟自绘与无缝交棒](adr/ADR-0010-startup-optical-wake-animation.md)。
-> Optical Wake 是冷启动一次性品牌时刻：玻璃球剪影唤醒 → 双光环聚焦 → 声压绽放 → 无缝融入主界面，
-> 能量渐变呼应设计原型蓝黄撞色。实现并行落地中，尚未入库的文件以「契约规划路径」标注（非反引号写法）。
+> 关联决策：[ADR-0010 开屏动画 Optical Wake：单时钟自绘与无缝交棒](adr/ADR-0010-startup-optical-wake-animation.md)、
+> [ADR-0011 精密汽车座舱](adr/ADR-0011-precision-automotive-cockpit.md)（v4.0 只改材质与构图，时间轴不变）。
+> 冷启动一次性品牌时刻：机加工表盘剪影唤醒 → 刻度环与表圈扫入 → 声压弧绽放 → 无缝融入主界面；
+> v4.0 起表盘用座舱材质（车削盘面 + 60 格刻度 + 四角卡尺），不再有玻璃球与毛玻璃质感。
 
 ### 11.1 四幕时间轴（单时钟 t = elapsed ms）
 
@@ -229,22 +265,22 @@ stateDiagram-v2
 
 | 时刻 | 阶段 | 元素 | 入出公式 |
 | --- | --- | --- | --- |
-| 0–160 | WAKE 唤醒 | 玻璃球剪影 | `scale = 0.62 + 0.10·smoothstep(0, 160, t)`（0.62→0.72）；`alpha = smoothstep(0, 160, t)`（0→1，smoothstep 段） |
-| 160–500 | FOCUS 聚焦 | 双同心光环扫入（错峰 60ms） | `ring_k = smoothstep(160+60k, 460+60k, t)`，k ∈ {0,1}（环 0 160→460、环 1 220→520） |
-| 160–500 | FOCUS 聚焦 | 镜面高光扫过 | `focus = smoothstep(160, 500, t)` 驱动高光带横掠球冠 |
-| 160–500 | FOCUS 聚焦 | 环境光网格渐变渗入 | 渗入进度 `meshWash = smoothstep(160, 500, t)`；能量渐变色标深海蓝 `#2E5F86` → 琥珀 `#FFB547`（蓝黄撞色） |
-| 500–820 | BLOOM 绽放 | 球体落位 | `scale = 0.72 + 0.28·settle(smoothstep(500, 820, t))`（`TactileOrbSpring` 0.55 手感同源微过冲 ≈12%，精确落位 1.0） |
-| 500–820 | BLOOM 绽放 | 双琥珀声压弧 | `arcPhase = ((t-500)/260) % 1`（%1 相位循环；双弧相位差 0.5 反相发射） |
-| 500–820 | BLOOM 绽放 | 星芒 glint ×3 | `glint_i = smoothstep(t_i, t_i+60, t) × (1 - smoothstep(t_i+120, t_i+260, t))`，`t_i = 520+85i` ms（i ∈ {0,1,2}） |
-| 500–820 | BLOOM 绽放 | 品牌字标字距落定 | `tracking = tracking_end + Δ·(1 - settle(bloom))`（字距沿 settle 曲线收敛落定） |
+| 0–160 | WAKE 唤醒 | 表盘剪影 | `scale = 0.62 + 0.10·smoothstep(0, 160, t)`（0.62→0.72）；`alpha = smoothstep(0, 160, t)`（0→1，smoothstep 段） |
+| 160–500 | FOCUS 聚焦 | 60 格刻度顺时针扫入（两段错峰 60ms） | `ring_k = smoothstep(160+60k, 460+60k, t)`，k ∈ {0,1}（刻度环 160→460、表圈弧 220→520） |
+| 160–500 | FOCUS 聚焦 | 表圈高光弧扫过 | `focus = smoothstep(160, 500, t)` 驱动一段 34° 高光弧沿表圈旋转（不在盘面打光带） |
+| 160–500 | FOCUS 聚焦 | 工程网格 + 品牌暖光晕渗入 | 渗入进度 `wash = smoothstep(160, 500, t)`；暖光晕取该主题 Car 强调色（浅色 `#A85B00` / 深色 `#FFB547`） |
+| 500–820 | BLOOM 绽放 | 表盘落位 | `scale = 0.72 + 0.28·settle(smoothstep(500, 820, t))`（同源欠阻尼微过冲 ≈12%，精确落位 1.0） |
+| 500–820 | BLOOM 绽放 | 双强调声压弧 | `arcPhase = ((t-500)/260) % 1`（%1 相位循环；双弧相位差 0.5 反相发射） |
+| 500–820 | BLOOM 绽放 | 校准点 ×3 | `glint_i = smoothstep(t_i, t_i+60, t) × (1 - smoothstep(t_i+120, t_i+260, t))`，`t_i = 520+85i` ms（i ∈ {0,1,2}） |
+| 500–820 | BLOOM 绽放 | 品牌字标字距落定 | `tracking = tracking_end + Δ·(1 - settle(bloom))`（字距沿 settle 曲线收敛落定；字标位于表盘下方 132dp，绝不压在盘面上） |
 | t=560 | BLOOM 绽放 | 轻触觉 ×1 | 单次轻触觉脉冲（`HAPTIC_MS = 560`；无马达/系统触觉关闭 → 静默降级） |
-| 820–1040 | MERGE 融合 | reveal 闩锁 | t=820 一次性发出；主界面自转场下层接棒、错峰 40ms `SnappySpring` 浮现 |
+| 820–1040 | MERGE 融合 | reveal 闩锁 | t=820 一次性发出；主界面自转场下层接棒、错峰 40ms `KeySpring` 浮现 |
 | 820–1040 | MERGE 融合 | 覆盖层退场 | `scale = 1 + 0.04·smoothstep(820, 1040, t)`（1.0→1.04）；`alpha = 1 - smoothstep(820, 1040, t)`；t=1040 彻底移出组合树 |
 
 公式语义（全部为 t 的纯函数，禁 setTimeout/多时钟排程）：
 
 - `smoothstep(a, b, x) = s²(3-2s)`，其中 `s = clamp((x-a)/(b-a), 0, 1)`——全片唯一缓动原语（C¹ 连续段）。
-- `settle(p)`：确定性解析欠阻尼阶跃（ζ=0.55、ω=9，与 `TactileOrbSpring` 手感同源），微过冲后精确收敛 1.0；
+- `settle(p)`：确定性解析欠阻尼阶跃（ζ=0.55、ω=9，与 `KeySpring` 同源的机加工手感），微过冲后精确收敛 1.0；
   属里程碑曲线推导，不引缓动库。
 - `% 1`：相位循环取小数部分（声压弧发射节律）。
 - 时间轴常量（1040/160/500/820/560/120/40）单点集中于 `StartupTimeline`（`core/designsystem/src/main/java/com/industrial/horn/ui/theme/StartupWake.kt`）。

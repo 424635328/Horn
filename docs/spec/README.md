@@ -12,7 +12,7 @@
 |---|---|---|
 | [01-system-architecture.md](01-system-architecture.md) | 多模块拓扑、UDF 状态机、防卡音生命周期矩阵、DataStore Schema 契约 | Living Spec |
 | [02-audio-dsp-engine.md](02-audio-dsp-engine.md) | 双后端音频引擎、DSP 信号链、5 音色声学参数、混响、遥测与性能预算 | Living Spec |
-| [03-ux-interaction-and-haptics.md](03-ux-interaction-and-haptics.md) | 手势状态机、防呆护耳交互、Apple Glass 设计 Token 与渲染降级、触觉指纹 | Living Spec |
+| [03-ux-interaction-and-haptics.md](03-ux-interaction-and-haptics.md) | 手势状态机、防呆护耳交互、Precision Cockpit 材质与仪表几何、触觉指纹 | Living Spec |
 | [04-ecosystem-and-protocols.md](04-ecosystem-and-protocols.md) | Glance 微件、Quick Tile、Wear OS 跨端协议 | Living Spec |
 | [05-dx-quality-and-ci.md](05-dx-quality-and-ci.md) | Debug/Release 隔离、质量门禁矩阵、R8、CI/CD | Living Spec |
 | [06-key-technologies.md](06-key-technologies.md) | 全项目关键技术全景：构建/UI/音频/数据/测试/CI 六域技术账本与技术雷达 | Living Spec |
@@ -20,7 +20,7 @@
 | [research/01-horn-physical-modeling.md](research/01-horn-physical-modeling.md) | 号筒物理声源建模研究：激励器、非线性激波、五音色参数 | Research Spec |
 | [research/02-spatial-scene-acoustics.md](research/02-spatial-scene-acoustics.md) | 3D 立体声场与场景传播研究：ISM、FDN、大气吸声、单声道折叠红线 | Research Spec |
 | [research/03-psychoacoustics-transducer-adaptation.md](research/03-psychoacoustics-transducer-adaptation.md) | 心理声学与移动扬声器适配研究：VBS、等响校准、真峰值 | Research Spec |
-| [adr/](adr/) | MADR 架构决策记录（ADR-0001 ~ ADR-0008） | Accepted |
+| [adr/](adr/) | MADR 架构决策记录（ADR-0001 ~ ADR-0011） | Accepted（ADR-0008 Superseded by ADR-0011） |
 
 > `research/` 目录定位：**Frozen Contract + 研究规约**。`00-stereo-pipeline-contract.md` 是主架构师在汇总 01~03 三篇研究规约后冻结的实现契约（双端 MUST 遵循）；01~03 为 Research Spec（研究规约），结论落地前须经 ADR 评审后并入 Living Spec。
 
@@ -36,10 +36,10 @@
 | I4 | 输出 MUST 经护耳衰减与软限幅，任何路径不得产生超越 ±0.98 硬边界的样本 | DSP 测试防削波断言 | `core/audio/src/main/java/com/industrial/horn/audio/HornRenderer.kt` |
 | I5 | `:core:audio` MUST NOT 依赖任何 UI 框架；`:feature:horn` 与 `:core:designsystem` MUST NOT 导入 `android.media.*` | Konsist 架构测试 | `app/src/test/java/com/industrial/horn/architecture/ArchitectureTest.kt` |
 | I6 | Release 产物 MUST 零调试代码泄露（示波器/诊断浮层仅存在于 `src/debug`） | 编译期源码集隔离 + R8 | `feature/horn/src/debug/` 与 `feature/horn/src/release/` |
-| I7 | 高频视觉状态（RMS 包络、按压缩放、滑动气压位移、环境光呼吸）MUST 以延迟读取（`graphicsLayer`/`drawWithCache`/`() -> Float`）驱动，禁重组风暴 | 代码评审 + `AppleGlass` 组件契约 | `core/designsystem/src/main/java/com/industrial/horn/ui/theme/` |
-| I8 | 背景环境光动画 MUST 感知生命周期，`ON_STOP`/不可见时自动停播（息屏零功耗） | `AmbientMeshBackground` 生命周期观察 | `core/designsystem/src/main/java/com/industrial/horn/ui/theme/AmbientMeshBackground.kt` |
+| I7 | 高频视觉状态（RMS 包络、按压行程、滑动气压位移、扫描带相位）MUST 以延迟读取（`graphicsLayer`/`drawWithCache`/`() -> Float`）驱动，禁重组风暴 | 代码评审 + 座舱组件契约（§5.6） | `core/designsystem/src/main/java/com/industrial/horn/ui/theme/` |
+| I8 | 空闲态 MUST 帧静止：不得存在无人观看的无限动画；鸣笛期动画 MUST 生命周期门控（息屏/后台零功耗） | 代码评审 + `CockpitCanvas` 契约 + Roborazzi 帧稳定性 | `core/designsystem/src/main/java/com/industrial/horn/ui/theme/CockpitCanvas.kt` |
 | I9 | 手机与手表 MUST 共享同一 `applicationId`，跨端协议 MUST 可脱 Play Services 离线单测 | `WearProtocolTest` | `core/data/src/main/java/com/industrial/horn/data/WearProtocol.kt` |
-| I10 | UI 视觉基准（80 张 Roborazzi）MUST 100% 确定性通过；跨平台差异 MUST 走 Linux 重录 SOP | `verifyRoborazziDebug` 门禁 | `app/src/test/screenshots/` |
+| I10 | UI 视觉基准（80 张主界面 + 6 张开屏定格帧）MUST 100% 确定性通过；跨平台差异 MUST 走 Linux 重录 SOP | `verifyRoborazziDebug` 门禁 | `app/src/test/screenshots/` |
 | I11 | 立体声 MUST 单声道折叠安全：L+R 折叠能量损失 < 3 dB、200 Hz–2 kHz 陷波深度 < 6 dB | 声学 QA 测试（逐场景粉噪折叠/扫频断言） | `core/audio/src/test/java/com/industrial/horn/audio/HornSynthesizerContractTest.kt` |
 | I12 | 参数平滑防拉链：一切控制参数（type/space 交叉淡化、expression、护耳增益、custom 滑块、输出模式）MUST 经一阶平滑后才触及增益或系数 | `OnePoleSmoother` 契约 + 代码评审 | `core/audio/src/main/java/com/industrial/horn/audio/dsp/OnePoleSmoother.kt` |
 | I13 | 防次正规数：C++ FTZ（FPCR Flush-to-Zero）与双端块级零吸附策略 MUST 一致（Kotlin 端零吸附 + DC 偏置） | 冻结契约 §2 红线 + 双端 QA 对拍 | `docs/spec/research/00-stereo-pipeline-contract.md` |
@@ -51,7 +51,7 @@
 |---|---|
 | xrun | 音频缓冲区欠载/溢出计数；实时引擎健康度指标 |
 | RMS | 均方根响度包络，归一化 `0f..1f`，驱动视觉声压 |
-| AGSL | Android Graphics Shading Language，API 33+ `RuntimeShader` 所用着色语言 |
+| AGSL | Android Graphics Shading Language，API 33+ `RuntimeShader` 所用着色语言；**v4.0 起本项目不再使用**（座舱材质无模糊/无着色器） |
 | MADR | Markdown Any Decision Records，本项目 ADR 采用的决策记录格式 |
 | Prefab | Gradle/NDK 的原生库分发机制，本项目经其引入 Oboe |
 | UDF | Unidirectional Data Flow，单向数据流；本项目以 `HornViewModel` 为单一事实源 |
@@ -61,6 +61,9 @@
 | 软限幅 | `tanh` 平滑压缩 + ±0.98 硬边界，防削波破音 |
 | Deferred Read | 延迟状态读取：在 draw/graphicsLayer 阶段读取 `State`，只重绘不重组 |
 | Concentric Radii | 同心圆角法则：`R_outer = R_inner + padding` |
+| Cockpit | 精密汽车座舱视觉体系：陶瓷日光 / 隐身碳纤双材质 + 机加工面板 + 仪表几何（v4.0） |
+| Pressure Ring | 60 格 RMS 压力刻度环，点亮格数 `round(rms × 60)` |
+| Bezel | 承载 240° Expression 刻度的表圈刻度带（`0.862–0.925 R`） |
 | tnum | Tabular Numbers 字体特性，动态数值等宽防跳动 |
 | FDN | Feedback Delay Network，反馈延迟网络；正交矩阵（Hadamard/Householder）+ 阻尼延迟线构成晚混响，谱半径 ρ(A·G) < 1 保证稳定 |
 | ISM | Image Source Method，镜像源法；矩形房间早反射的参数化几何近似（Allen-Berkley） |

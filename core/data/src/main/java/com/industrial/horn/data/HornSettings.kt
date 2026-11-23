@@ -10,4 +10,5 @@ data class HornSettings(
     val acousticSpace: AcousticSpace = AcousticSpace.STREET,
     val customProfile: CustomHornProfile = CustomHornProfile.DEFAULT,
     val volumeTriggerEnabled: Boolean = false,
+    val themeMode: ThemeMode = ThemeMode.DEFAULT,
 )

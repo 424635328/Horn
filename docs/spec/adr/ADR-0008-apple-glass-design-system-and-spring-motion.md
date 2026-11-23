@@ -1,7 +1,13 @@
 # ADR-0008: Apple Glass 设计系统与弹簧动效体系
 
-- 状态：Accepted
+- 状态：**Superseded by [ADR-0011](ADR-0011-precision-automotive-cockpit.md)**（2026-11-23）
 - 日期：2026-11-22
+
+> **取代说明**：v4.0 起，产品视觉语言改为「精密汽车座舱」（Precision Automotive Cockpit）。
+> 玻璃半透明堆叠、背景虚化、AGSL 折射与微颗粒噪点被整体移除；弹簧预设由 `HornMotion`
+> 以临界阻尼为主重新定义。本文保留为历史决策记录（含当时的权衡与取舍），
+> 现行契约见 [ADR-0011](ADR-0011-precision-automotive-cockpit.md) 与
+> [docs/spec/03 §5](../03-ux-interaction-and-haptics.md)。
 
 ## 背景与问题
 
@@ -31,7 +37,7 @@ v3.0 的视觉语言是金属/琥珀风格的 Material 3 定制主题。产品�
 
 ## 最终决策
 
-1. **三层玻璃构造**（`core/designsystem/src/main/java/com/industrial/horn/ui/theme/AppleGlass.kt`）：
+1. **三层玻璃构造**（原 AppleGlass.kt，v4.0 已删除）：
    - 背景虚化层：玻璃面板经 `backdrop` 契约重绘背后 `AmbientMeshSpec` 图层，并施加
      `android.graphics.RenderEffect.createBlurEffect(22px).asComposeRenderEffect()`（`graphicsLayer.renderEffect`）；
    - 磨砂层：白/黑双 scrim + 1.5% 固定种子 LCG 微颗粒（160 点 `drawPoints` 单次绘制）抗色带；
@@ -60,14 +66,16 @@ v3.0 的视觉语言是金属/琥珀风格的 Material 3 定制主题。产品�
 - 微颗粒固定种子在超大屏放大下呈规则噪点——用确定性换随机感，已被 I10 排序为更高优先级。
 - `RenderEffect` 需 API 31+；API 26–30 仅磨砂近似（视觉可接受的降级）。
 
-## 源码验证路径
+## 源码验证路径（历史记录）
 
-- 三层玻璃与能力探测：`core/designsystem/src/main/java/com/industrial/horn/ui/theme/AppleGlass.kt`
-- 弹簧预设与橡皮筋：`core/designsystem/src/main/java/com/industrial/horn/ui/theme/AppleMotion.kt`
-- 环境光网格与生命周期停播：`core/designsystem/src/main/java/com/industrial/horn/ui/theme/AmbientMeshBackground.kt`
-- 五车型深浅双主题色板：`core/designsystem/src/main/java/com/industrial/horn/ui/theme/AmbientPalettes.kt`
-- 通用玻璃组件：`core/designsystem/src/main/java/com/industrial/horn/ui/theme/GlassComponents.kt`
-- 液态玻璃鸣笛球与 Expression 玻璃胶囊：`feature/horn/src/main/java/com/industrial/horn/ui/HornButton.kt`
-- 灵动岛横幅与玻璃控制台：`feature/horn/src/main/java/com/industrial/horn/ui/HornScreen.kt`
+> v4.0（ADR-0011）已删除下列文件，路径仅作历史定位，**不再存在于仓库**；现行实现见 ADR-0011。
+
+- 三层玻璃与能力探测：AppleGlass.kt（已删除）
+- 弹簧预设与橡皮筋：AppleMotion.kt（已删除，现由 Motion.kt 的 HornMotion 取代）
+- 环境光网格与生命周期停播：AmbientMeshBackground.kt（已删除）
+- 五车型深浅双主题色板：AmbientPalettes.kt（已删除）
+- 通用玻璃组件：GlassComponents.kt（已删除）
+- 液态玻璃鸣笛球与 Expression 玻璃胶囊：HornButton.kt（已删除，现为 HornInstrumentPad.kt）
+- 灵动岛横幅与玻璃控制台：HornScreen.kt（已重写）
 - 设计 Token 与兼容矩阵规约：`docs/spec/03-ux-interaction-and-haptics.md`
 - 视觉回归基准（80 张）：`app/src/test/screenshots/`

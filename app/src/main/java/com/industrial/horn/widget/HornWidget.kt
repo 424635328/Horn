@@ -56,8 +56,8 @@ private fun HornWidgetContent() {
         modifier =
             GlanceModifier
                 .fillMaxSize()
-                .background(ImageProvider(R.drawable.widget_glass_bg))
-                .cornerRadius(24.dp)
+                .background(ImageProvider(R.drawable.widget_panel_bg))
+                .cornerRadius(16.dp)
                 .clickable(actionRunCallback<WidgetHonkAction>())
                 .padding(10.dp),
         verticalAlignment = Alignment.Vertical.CenterVertically,
@@ -79,7 +79,7 @@ private fun HornWidgetContent() {
                 text = "HOLD THE HORN",
                 style =
                     TextStyle(
-                        color = ColorProvider(Color(0xFFA8B0B6)),
+                        color = ColorProvider(Color(0xFF8C94A3)),
                         fontSize = 8.sp,
                         textAlign = TextAlign.Center,
                     ),

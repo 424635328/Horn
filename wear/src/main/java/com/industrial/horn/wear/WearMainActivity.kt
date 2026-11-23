@@ -47,7 +47,9 @@ import com.google.android.gms.wearable.MessageEvent
 import com.industrial.horn.data.WearCommand
 import com.industrial.horn.data.WearProtocol
 import com.industrial.horn.data.WearStatus
+import kotlin.math.cos
 import kotlin.math.min
+import kotlin.math.sin
 
 class WearMainActivity : ComponentActivity() {
     private var phoneStatus by mutableStateOf<WearStatus?>(null)
@@ -104,7 +106,12 @@ private fun WearHornScreen(
     onHoldStart: () -> Unit,
     onHoldEnd: () -> Unit,
 ) {
+    // Carbon palette subset of the phone cockpit: the watch is a remote instrument, so it uses
+    // the same machined language at wrist scale instead of a shrunken copy of the phone UI.
     val accent = Color(0xFFFFB547)
+    val textPrimary = Color(0xFFF4F6F9)
+    val textSecondary = Color(0xFF8C94A3)
+    val hairline = Color(0xFF2C313C)
     val secondary =
         if (phoneStatus?.isHonking == true) {
             "PHONE HONKING"
@@ -118,48 +125,50 @@ private fun WearHornScreen(
         modifier =
             Modifier
                 .fillMaxSize()
-                .background(Color(0xFF07090C))
+                .background(Color(0xFF0D0F12))
                 .testTag("wear_horn_screen"),
         contentAlignment = Alignment.Center,
     ) {
-        val diameter = min(maxWidth.value, maxHeight.value) * 0.68f
+        val diameter = min(maxWidth.value, maxHeight.value) * 0.70f
         val pressScale by animateFloatAsState(
-            targetValue = if (isHolding) 0.93f else 1f,
-            animationSpec = spring(dampingRatio = 0.55f, stiffness = 650f),
+            targetValue = if (isHolding) 0.97f else 1f,
+            animationSpec = spring(dampingRatio = 0.9f, stiffness = 900f),
             label = "wearPressScale",
         )
 
         Canvas(modifier = Modifier.fillMaxSize()) {
             val center = Offset(size.width / 2f, size.height / 2f)
-            repeat(3) { index ->
-                drawCircle(
-                    color = accent.copy(alpha = 0.10f - index * 0.02f),
-                    radius = size.minDimension * (0.30f + index * 0.10f),
-                    center = center,
-                    style = Stroke(width = 1.dp.toPx()),
+            val radius = size.minDimension / 2f
+            val outer = radius * 0.94f
+            val inner = radius * 0.86f
+            // 24 graduations around the dial, lit from 12 o'clock while holding.
+            for (index in 0 until 24) {
+                val angle = (-90f + index * 15f) * (Math.PI.toFloat() / 180f)
+                val major = index % 6 == 0
+                val length = if (major) outer - inner else (outer - inner) * 0.55f
+                drawLine(
+                    color = if (isHolding) accent else textSecondary.copy(alpha = 0.5f),
+                    start =
+                        Offset(
+                            center.x + cos(angle) * (outer - length),
+                            center.y + sin(angle) * (outer - length),
+                        ),
+                    end = Offset(center.x + cos(angle) * outer, center.y + sin(angle) * outer),
+                    strokeWidth = if (major) 2f else 1f,
                 )
             }
-            drawCircle(
-                brush =
-                    Brush.radialGradient(
-                        colors = listOf(accent.copy(alpha = 0.10f), Color.Transparent),
-                        center = center,
-                        radius = size.minDimension * 0.5f,
-                    ),
-                radius = size.minDimension * 0.5f,
-                center = center,
-            )
+            drawCircle(color = hairline, radius = outer, center = center, style = Stroke(1f))
         }
 
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(5.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             Text(
                 text = "HORN",
-                color = accent,
+                color = textSecondary,
                 style = MaterialTheme.typography.labelMedium,
-                letterSpacing = 2.5.sp,
+                letterSpacing = 3.sp,
             )
             Surface(
                 modifier =
@@ -185,28 +194,51 @@ private fun WearHornScreen(
                             }
                         },
                 shape = CircleShape,
-                color = if (isHolding) accent else Color(0xFF1B232B),
+                color = Color(0xFF16191F),
                 border =
                     androidx.compose.foundation.BorderStroke(
-                        width = 2.dp,
-                        color = accent.copy(alpha = 0.65f),
+                        width = 1.dp,
+                        color = accent.copy(alpha = if (isHolding) 1f else 0.55f),
                     ),
             ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Text(
-                        text = if (isHolding) "HONK" else "HORN",
-                        color = if (isHolding) Color(0xFF17120A) else accent,
-                        fontWeight = FontWeight.Black,
-                        fontSize = 24.sp,
-                        letterSpacing = 1.sp,
-                    )
+                Box(
+                    modifier =
+                        Modifier
+                            .fillMaxSize()
+                            .background(
+                                Brush.radialGradient(
+                                    colors =
+                                        if (isHolding) {
+                                            listOf(accent.copy(alpha = 0.42f), Color(0xFF16191F))
+                                        } else {
+                                            listOf(Color(0xFF2A3039), Color(0xFF12151A))
+                                        },
+                                ),
+                            ),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = if (isHolding) "HONK" else "HOLD",
+                            color = if (isHolding) Color(0xFF0D0F12) else textPrimary,
+                            fontWeight = FontWeight.Black,
+                            fontSize = 20.sp,
+                            letterSpacing = 2.sp,
+                        )
+                        Text(
+                            text = "2CH · 48k",
+                            color = if (isHolding) Color(0xFF0D0F12).copy(alpha = 0.7f) else textSecondary,
+                            fontSize = 8.sp,
+                            letterSpacing = 0.8.sp,
+                        )
+                    }
                 }
             }
             Text(
                 text = secondary,
-                color = Color(0xFFA8B0B6),
-                fontSize = 10.sp,
-                letterSpacing = 0.8.sp,
+                color = textSecondary,
+                fontSize = 9.sp,
+                letterSpacing = 1.sp,
                 textAlign = TextAlign.Center,
             )
         }

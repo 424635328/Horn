@@ -18,7 +18,7 @@
 微件实现位于 `app/src/main/java/com/industrial/horn/widget/HornWidget.kt`：
 
 - `HornWidget : GlanceAppWidget`，`sizeMode = SizeMode.Responsive(setOf(DpSize(56.dp, 56.dp), DpSize(120.dp, 120.dp)))`，即 56dp / 120dp 两档响应式尺寸；内容以 `LocalSize.current.width < 80.dp` 判定紧凑档，紧凑档仅显示 `HONK` 文本，宽档追加 `HOLD THE HORN` 副标题。
-- 卡片视觉：`background(ImageProvider(R.drawable.widget_glass_bg))` + `cornerRadius(24.dp)`，圆角玻璃卡片 drawable 位于 `app/src/main/res/drawable/widget_glass_bg.xml`。
+- 卡片视觉：`background(ImageProvider(R.drawable.widget_panel_bg))` + `cornerRadius(16.dp)`，机加工碳纤面板 drawable 位于 `app/src/main/res/drawable/widget_panel_bg.xml`。
 - 点击交互：整个微件区域 `clickable(actionRunCallback<WidgetHonkAction>())`。
 - `WidgetHonkAction` 实现 `androidx.glance.appwidget.action.ActionCallback`，`onAction` 委托 `HornWidgetService.start(context)`；`HornWidgetReceiver : GlanceAppWidgetReceiver` 负责系统绑定。二者与 `HornWidget` 同文件定义。
 - MUST NOT 在微件内直接创建音频会话：点击的所有音频行为必须经 §1.2 的前台服务路径，Glance 回调进程存活时间不可依赖。
@@ -205,7 +205,7 @@ sequenceDiagram
 - 前台服务：`app/src/main/java/com/industrial/horn/widget/HornWidgetService.kt`
 - Quick Settings Tile：`app/src/main/java/com/industrial/horn/widget/HornTileService.kt`
 - 微件元数据：`app/src/main/res/xml/horn_widget_info.xml`
-- 微件背景 drawable：`app/src/main/res/drawable/widget_glass_bg.xml`
+- 微件背景 drawable：`app/src/main/res/drawable/widget_panel_bg.xml`
 - 协议层：`core/data/src/main/java/com/industrial/horn/data/WearProtocol.kt`
 - 协议单测：`core/data/src/test/java/com/industrial/horn/data/WearProtocolTest.kt`
 - 手表通道封装：`wear/src/main/java/com/industrial/horn/wear/WearLink.kt`
