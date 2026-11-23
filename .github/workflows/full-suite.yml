@@ -1,0 +1,117 @@
+name: Full Suite
+
+# Backstop for the incremental CI: a complete verification of the whole project.
+# Scheduled weekly, and available on demand for release candidates.
+
+on:
+  schedule:
+    - cron: "0 2 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: full-suite-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  GRADLE_OPTS: -Dorg.gradle.daemon=false
+
+jobs:
+  full-gates:
+    name: Full quality gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Every quality gate in one invocation
+        run: ./gradlew spotlessCheck detekt lintDebug testDebugUnitTest verifyRoborazziDebug
+
+      - name: Docs link integrity
+        run: python3 .github/scripts/check_docs_links.py
+
+      - name: Upload reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-suite-reports
+          path: |
+            **/build/reports/**
+            **/build/outputs/roborazzi/**
+          retention-days: 7
+
+  release-build:
+    name: Release R8 Build & APK Size Report
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Install pinned NDK and CMake
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;27.0.12077973" "cmake;3.22.1"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build release APKs
+        run: ./gradlew :app:assembleRelease :wear:assembleRelease
+
+      - name: APK size report
+        run: |
+          {
+            echo "## Release APK size report (full suite)"
+            echo ""
+            echo "| Artifact | Size (bytes) | Size (KB) |"
+            echo "|---|---:|---:|"
+            for apk in app/build/outputs/apk/release/*.release.apk wear/build/outputs/apk/release/*.release.apk; do
+              if [ -f "$apk" ]; then
+                bytes=$(stat -c%s "$apk")
+                kb=$(awk "BEGIN {printf \"%.1f\", $bytes/1024}")
+                echo "| \`$apk\` | $bytes | $kb |"
+              fi
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload release APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-suite-release-apks
+          path: |
+            app/build/outputs/apk/release/*.apk
+            wear/build/outputs/apk/release/*.apk
+          retention-days: 14
+
+  full-suite-gate:
+    name: full-suite-gate
+    needs: [full-gates, release-build]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Aggregate results
+        run: |
+          for r in "${{ needs.full-gates.result }}" "${{ needs.release-build.result }}"; do
+            if [ "$r" != "success" ]; then
+              echo "A required job finished with: $r"
+              exit 1
+            fi
+          done
+          echo "Full suite green."

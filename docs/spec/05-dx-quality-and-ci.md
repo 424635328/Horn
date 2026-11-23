@@ -149,11 +149,18 @@ Release 构建 MUST 开启代码与资源压缩：`app/build.gradle.kts` 的 rel
 
 `.github/workflows/ci.yml` 触发于 push（main、develop）、pull_request 与 workflow_dispatch；`permissions: contents: read`；非 main 分支的过期运行会被 concurrency 取消。公共环境：JDK 21（temurin）、`gradle/actions/setup-gradle@v4`、`GRADLE_OPTS: -Dorg.gradle.daemon=false`；NDK 27.0.12077973 与 CMake 3.22.1 **仅**在 `release-build-and-size` job 内经 runner 预装的 `sdkmanager` 安装（其余 job 无需原生编译，完全不装）。
 
+**增量门禁机制（v3.8）**：每次 push/PR 只跑**变更影响面**内的检查，周度全量套件兜底；构建配置类变更（gradle/、build-logic/、config/、workflows、版本目录）一律保守升级为全量。影响映射由 `.github/scripts/impact_map.py` 确定性计算（变更模块 + 传递依赖扇出；含 `--self-test` 正负控，CI 内自检），纯文档变更仅跑格式与死链检查。
+
 | job id | 显示名 | 核心命令 | 失败/产物行为 |
 |---|---|---|---|
-| `checks` | Checks（静态分析·测试·视觉·文档） | `./gradlew spotlessCheck detekt lintDebug testDebugUnitTest verifyRoborazziDebug` + `python3 .github/scripts/check_docs_links.py` | 失败上传 `check-reports`（detekt/lint/测试报告与 Roborazzi diff，7 天） |
-| `release-build-and-size` | Release R8 Build & APK Size Report | `./gradlew :app:assembleRelease :wear:assembleRelease` | `$GITHUB_STEP_SUMMARY` 输出 APK 体积表；上传 `release-apks`（5 天） |
-| `ci-gate` | ci-gate（聚合门禁） | 汇总 `checks` 与 `release-build-and-size` | `if: always()`；任一前置非 success 即失败 |
+| `changes` | Impact analysis | `python3 .github/scripts/impact_map.py`（含 `--self-test`） | 输出 mode/gradle_args/needs_release 供下游裁剪 |
+| `checks` | Incremental checks | `./gradlew <影响面任务集>` + `python3 .github/scripts/check_docs_links.py` | 失败上传 `check-reports`（7 天） |
+| `release-build-and-size` | Release R8 Build & APK Size Report | `./gradlew :app:assembleRelease :wear:assembleRelease`（仅 `needs_release=true` 时运行） | `$GITHUB_STEP_SUMMARY` 体积表；上传 `release-apks`（5 天） |
+| `ci-gate` | ci-gate（聚合门禁） | 汇总 `changes`/`checks`/`release-build-and-size` | `if: always()`；release job 的 `skipped`（判定无需）视为通过 |
+
+**周度全量兜底**：`.github/workflows/full-suite.yml` 于每周一 02:00 UTC 定时（+ `workflow_dispatch` 手动）执行完整门禁
+（`spotlessCheck detekt lintDebug testDebugUnitTest verifyRoborazziDebug` + 死链 + 双端 Release 构建与体积报告），
+覆盖增量模式的漏检风险面。
 
 说明：
 

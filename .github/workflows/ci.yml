@@ -20,13 +20,50 @@ env:
   GRADLE_OPTS: -Dorg.gradle.daemon=false
 
 jobs:
-  # Merged verification gate: static analysis + unit/arch tests + visual regression +
-  # docs integrity share ONE Gradle invocation so compilation happens exactly once.
-  # The same surface is available locally as `./gradlew checkAll` (see CONTRIBUTING.md).
-  checks:
-    name: Checks (static analysis · tests · visual · docs)
+  # Impact analysis: map the change set to the smallest safe set of checks.
+  # Unknown blast radius (build config, workflows, toolchains) escalates to the
+  # full battery; docs-only change sets stay cheap. Weekly full coverage is the
+  # backstop (see full-suite.yml).
+  changes:
+    name: Impact analysis
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 5
+    outputs:
+      mode: ${{ steps.map.outputs.mode }}
+      gradle_args: ${{ steps.map.outputs.gradle_args }}
+      needs_release: ${{ steps.map.outputs.needs_release }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Self-test the impact mapper (positive + negative controls)
+        run: python3 .github/scripts/impact_map.py --self-test
+
+      - name: Collect changed files
+        id: diff
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git diff --name-only "${{ github.event.pull_request.base.sha }}" HEAD > /tmp/changed.txt
+          else
+            BEFORE="${{ github.event.before }}"
+            if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+              git diff --name-only HEAD~1 HEAD > /tmp/changed.txt
+            else
+              git diff --name-only "$BEFORE" HEAD > /tmp/changed.txt
+            fi
+          fi
+          echo "Changed files:"; cat /tmp/changed.txt
+
+      - name: Map change set to impact scope
+        id: map
+        run: python3 .github/scripts/impact_map.py /tmp/changed.txt
+
+  checks:
+    name: Incremental checks (${{ needs.changes.outputs.mode }})
+    runs-on: ubuntu-latest
+    needs: changes
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
@@ -39,8 +76,8 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: All quality gates in one invocation
-        run: ./gradlew spotlessCheck detekt lintDebug testDebugUnitTest verifyRoborazziDebug
+      - name: Run scoped quality gates
+        run: ./gradlew ${{ needs.changes.outputs.gradle_args }}
 
       - name: Docs link integrity
         run: python3 .github/scripts/check_docs_links.py
@@ -59,11 +96,13 @@ jobs:
             **/build/reports/roborazzi/**
           retention-days: 7
 
-  # The only job that needs the NDK: it proves the Oboe C++ engine and R8 release
-  # pipeline stay green, and publishes the APK size budget to the step summary.
+  # Only runs when the change set can affect release artifacts (audio engine,
+  # app/wear sources, build tooling). The weekly full suite always covers it.
   release-build-and-size:
     name: Release R8 Build & APK Size Report
     runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.needs_release == 'true'
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
@@ -109,20 +148,26 @@ jobs:
             wear/build/outputs/apk/release/*.apk
           retention-days: 5
 
-  # Single required status check for branch protection: aggregates every gate above.
+  # Single required status check for branch protection. A skipped
+  # release-build job means the change set did not need it (backstopped by the
+  # weekly full suite), which is a pass.
   ci-gate:
     name: ci-gate
-    needs: [checks, release-build-and-size]
+    needs: [changes, checks, release-build-and-size]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Aggregate results
         run: |
-          for r in "${{ needs.checks.result }}" "${{ needs.release-build-and-size.result }}"; do
+          for r in "${{ needs.changes.result }}" "${{ needs.checks.result }}"; do
             if [ "$r" != "success" ]; then
               echo "A required job finished with: $r"
               exit 1
             fi
           done
+          case "${{ needs.release-build-and-size.result }}" in
+            success|skipped) echo "release build: ${{ needs.release-build-and-size.result }}" ;;
+            *) echo "release build finished with: ${{ needs.release-build-and-size.result }}"; exit 1 ;;
+          esac
           echo "All gates green."

@@ -49,8 +49,12 @@ emergency with `git push --no-verify`). Individual gates:
 python .github/scripts/check_docs_links.py   # docs zero-dead-link check
 ```
 
-CI's `checks` job runs exactly `checkAll` plus the docs check; only the `release-build-and-size`
-job additionally compiles the Oboe NDK engine and R8 release APKs.
+CI is **incremental**: the `changes` job maps your diff (`.github/scripts/impact_map.py`) to the
+affected modules and runs only those checks — docs-only PRs cost a format + link check, while
+build-config changes conservatively escalate to the full battery. The `release-build-and-size`
+job only runs when release-affecting paths change. A weekly `full-suite.yml` run (Mon 02:00 UTC,
+or `workflow_dispatch`) is the complete-battery backstop, so `checkAll` locally remains the
+authoritative standard.
 
 ## Adding a new horn voice
 
