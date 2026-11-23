@@ -37,8 +37,8 @@ git config core.hooksPath .githooks   # install the pre-push hook (once per clon
 ./gradlew checkAll                    # every gate below, one command
 ```
 
-The pre-push hook runs `checkAll` plus the docs link check automatically (bypass in an
-emergency with `git push --no-verify`). Individual gates:
+The pre-push hook runs `checkAll` plus the docs link and vendored-skills integrity checks
+automatically (bypass in an emergency with `git push --no-verify`). Individual gates:
 
 ```bash
 ./gradlew spotlessApply               # auto-format Kotlin / Gradle / misc files
@@ -47,6 +47,7 @@ emergency with `git push --no-verify`). Individual gates:
 ./gradlew verifyRoborazziDebug        # visual regression against committed baselines
 ./gradlew lintDebug                   # Android Lint, zero errors
 python .github/scripts/check_docs_links.py   # docs zero-dead-link check
+python .github/scripts/check_skills.py       # skills structure + sanitization + manifest
 ```
 
 CI is **incremental**: the `changes` job maps your diff (`.github/scripts/impact_map.py`) to the
@@ -86,6 +87,20 @@ authoritative standard.
 Architecture contracts live in `docs/spec/`. If your change modifies a module boundary, an audio
 thread rule, a lifecycle safety contract, or another system invariant, update the relevant spec
 document — or add a new MADR-style ADR under `docs/spec/adr/` — in the same PR.
+
+## Vendored agent skills (`skills/`)
+
+`skills/` is a **read-only, sanitized snapshot** of the agent skills this project actually used
+(doc writing, primary-source research, startup-animation methodology). It is development-time
+material only: it is not a Gradle module, not packaged into any artifact, and excluded from
+spotless so the vendored bytes stay reproducible.
+
+- Do not edit vendored content in place. Fix it upstream in the skill library and re-snapshot;
+  the only allowed local edits are sanitization and repo-relative path fixes.
+- Every re-snapshot must regenerate `skills/manifest.sha256`, update the snapshot date and the
+  sanitization table in `skills/README.md`, and pass `python .github/scripts/check_skills.py`.
+- Adding a skill requires a concrete artifact it produced in this repo (file, PR or ADR); skills
+  that were only tried and produced nothing are not vendored (`archify` was rejected this way).
 
 ## Safety red lines
 

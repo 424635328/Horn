@@ -145,6 +145,7 @@ flowchart LR
 | Konsist 0.17.3 | 架构防腐：模块边界 / ViewModel 归属 / 音频模块零全局可变状态 |
 | Roborazzi 1.79.0 | 5 音色 × 2 主题 × 2 语言 × 2 字号 × 2 布局 = **80 张**主界面基准 + 6 张开屏定格帧 + 6 张仪表状态帧（压力环点亮 / 表针偏转），全部像素级回归 |
 | Baseline Profiles | `:baselineprofile` 实测生成冷启动/切换/鸣笛关键路径基线 |
+| Skills 完整性闸门 | `check_skills.py`：结构 / frontmatter / 脱敏 / 相对链接 / `manifest.sha256` 逐字节校验，含正控与负控 |
 | GitHub Actions | 5 个并行检查 Job + 单一 `ci-gate` 聚合门禁 + APK 体积追踪 |
 
 ## 快速上手
