@@ -16,4 +16,9 @@ if [ -z "$PY" ] || ! "$PY" .github/scripts/check_docs_links.py; then
   exit 1
 fi
 
+if [ -z "$PY" ] || ! "$PY" .github/scripts/check_skills.py; then
+  echo "[pre-push] skills integrity check failed (structure/sanitization/manifest)." >&2
+  exit 1
+fi
+
 echo "[pre-push] all local gates green."

@@ -82,6 +82,11 @@ jobs:
       - name: Docs link integrity
         run: python3 .github/scripts/check_docs_links.py
 
+      - name: Vendored skills integrity
+        run: |
+          python3 .github/scripts/check_skills.py --self-test
+          python3 .github/scripts/check_skills.py
+
       - name: Upload reports and visual diffs
         if: failure()
         uses: actions/upload-artifact@v4
