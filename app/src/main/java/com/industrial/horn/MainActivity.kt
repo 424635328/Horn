@@ -1,6 +1,7 @@
 package com.industrial.horn
 
 import android.annotation.SuppressLint
+import android.content.pm.ApplicationInfo
 import android.media.AudioManager
 import android.os.Build
 import android.os.Bundle
@@ -8,6 +9,7 @@ import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
 import android.provider.Settings
+import android.util.Log
 import android.view.KeyEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -42,6 +44,7 @@ import com.industrial.horn.data.WearCommand
 import com.industrial.horn.data.WearStatus
 import com.industrial.horn.presentation.HornViewModel
 import com.industrial.horn.presentation.StartupCoordinator
+import com.industrial.horn.presentation.StartupFrameMeter
 import com.industrial.horn.presentation.StartupState
 import com.industrial.horn.ui.HornScreen
 import com.industrial.horn.ui.StartupOverlay
@@ -118,11 +121,15 @@ class MainActivity : ComponentActivity() {
             var startupExiting by remember { mutableStateOf(false) }
             var startupDone by remember { mutableStateOf(false) }
             val wakeClock = remember { mutableFloatStateOf(0f) }
+            val frameMeter = remember { StartupFrameMeter() }
             if (!startupDone && (startupState == StartupState.Playing || startupExiting)) {
                 LaunchedEffect(Unit) {
                     val origin = withFrameNanos { it }
+                    var previous = origin
                     while (isActive) {
                         withFrameNanos { now ->
+                            frameMeter.record((now - previous) / 1_000_000f)
+                            previous = now
                             wakeClock.floatValue = ((now - origin) / 1_000_000f).coerceAtMost(1_040f)
                         }
                     }
@@ -219,6 +226,11 @@ class MainActivity : ComponentActivity() {
                                     onFinished = {
                                         startupDone = true
                                         startupCoordinator.complete()
+                                        // Machine-checkable frame budget: debug builds report
+                                        // median/p95/slow frames instead of "it feels smooth".
+                                        if ((applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0) {
+                                            Log.d("HornStartup", frameMeter.summary())
+                                        }
                                     },
                                     exiting = startupExiting,
                                     elapsedProvider = { wakeClock.floatValue },

@@ -16,10 +16,10 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /**
- * Frozen-clock Optical Wake frames: t = 300 (FOCUS) / 650 (BLOOM) / 900 (MERGE) x dark/light
- * themes = 6 baselines. Every frame is a pure function f(t) of the single wake clock, so the
- * deterministic injected `elapsedProvider` freezes each frame byte-identically (docs/spec/03
- * §11.1 / §11.7 / §11.8).
+ * Frozen-clock calibration frames: t = 120 (WAKE) / 300 (FOCUS) / 820 (REVEAL) / 920 (SHUTTER) ×
+ * dark/light themes = 8 baselines. Every frame is a pure function f(t) of the single wake clock,
+ * so the deterministic injected `elapsedProvider` freezes each frame byte-identically
+ * (docs/spec/03 §11.1 / §11.7 / §11.8).
  *
  * Roborazzi isolation from the existing 80 main-UI baselines: those live under the
  * `{voice}_{theme}_{locale}_{font}_{layout}` namespace and are naturally isolated — the
@@ -58,7 +58,7 @@ class StartupOverlaySnapshotTest {
             }
         }
 
-        for ((frame, t) in listOf("focus" to 300, "bloom" to 650, "merge" to 900)) {
+        for ((frame, t) in FRAMES) {
             for ((themeName, isDark) in listOf("dark" to true, "light" to false)) {
                 composeRule.runOnIdle {
                     dark = isDark
@@ -73,5 +73,20 @@ class StartupOverlaySnapshotTest {
                 )
             }
         }
+    }
+
+    private companion object {
+        /**
+         * One frozen frame per act: WAKE (reticle + scanlines), FOCUS (graduations + sweep),
+         * BLOOM (pressure arcs + wordmark wipe), SHUTTER (vertical masks + centre line).
+         * Each is a pure f(t), so the injected clock alone decides the pixels.
+         */
+        val FRAMES =
+            listOf(
+                "wake" to 120,
+                "focus" to 300,
+                "reveal" to 820,
+                "shutter" to 920,
+            )
     }
 }
