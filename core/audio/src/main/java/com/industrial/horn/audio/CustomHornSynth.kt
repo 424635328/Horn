@@ -71,7 +71,7 @@ class CustomHornSynth(
     // Horn body: throat reactance (fc = 0.55*f0) plus the mouth radiation high-pass (120->80 Hz).
     private val throatCoefficient =
         onePoleHighPassCoefficient(
-            (0.55 * profile.primaryFrequencyHz).toDouble().coerceIn(80.0, 1_500.0),
+            (0.55 * profile.primaryFrequencyHz).coerceIn(80.0, 1_500.0),
             sampleRate,
         )
     private val radiationCoefficient =

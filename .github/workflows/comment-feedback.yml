@@ -1,0 +1,107 @@
+name: Comment Feedback
+
+# Lightweight acknowledgement for pull-request comments: every human comment gets exactly one
+# reaction from a small palette, chosen deterministically from the comment id so the same comment
+# always receives the same emoji (no flapping, reproducible in a re-run). Bots are ignored, so
+# Dependabot's own 👍 on `@dependabot rebase` is never echoed back.
+#
+# Palette override: set the repository variable COMMENT_REACTION_EMOJIS to a comma separated list
+# (e.g. "+1,rocket,eyes"), max 8 entries. Invalid entries are dropped and the default palette is
+# used when the variable is empty.
+#
+# Manual run (dry_run defaults to true so a typo cannot spam a thread):
+#   gh workflow run comment-feedback.yml -f comment_id=<id> -f emoji=rocket -f dry_run=false
+
+on:
+  issue_comment:
+    types: [created]
+  workflow_dispatch:
+    inputs:
+      comment_id:
+        description: "Issue comment id to acknowledge"
+        required: true
+      emoji:
+        description: "Force one reaction (empty = let the bot pick)"
+        required: false
+        default: ""
+      dry_run:
+        description: "Only log the decision, do not post a reaction"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: comment-feedback-${{ github.event.comment.id || inputs.comment_id || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  acknowledge:
+    name: Acknowledge comment
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.issue.pull_request != null && github.event.comment.user.type != 'Bot')
+    steps:
+      - name: Pick and post one reaction
+        uses: actions/github-script@v7
+        env:
+          COMMENT_REACTION_EMOJIS: ${{ vars.COMMENT_REACTION_EMOJIS }}
+        with:
+          script: |
+            // GitHub's reaction API accepts exactly these content values.
+            const ALLOWED = ['+1', '-1', 'laugh', 'confused', 'heart', 'hooray', 'rocket', 'eyes'];
+            const DEFAULT_PALETTE = ['+1', 'rocket', 'eyes', 'heart', 'hooray'];
+
+            const configured = (process.env.COMMENT_REACTION_EMOJIS || '')
+              .split(',')
+              .map((value) => value.trim())
+              .filter((value) => ALLOWED.includes(value));
+            const palette = configured.length > 0 ? configured : DEFAULT_PALETTE;
+
+            const commentId = Number(
+              context.payload.comment?.id ?? core.getInput('comment_id', { required: true }),
+            );
+            if (!Number.isFinite(commentId) || commentId <= 0) {
+              core.setFailed(`invalid comment id: ${commentId}`);
+              return;
+            }
+
+            const forced = (core.getInput('emoji') || '').trim();
+            if (forced && !ALLOWED.includes(forced)) {
+              core.setFailed(`unsupported reaction "${forced}"; allowed: ${ALLOWED.join(', ')}`);
+              return;
+            }
+            const emoji = forced || palette[commentId % palette.length];
+            const dryRun =
+              context.eventName === 'workflow_dispatch' ? core.getBooleanInput('dry_run') : false;
+
+            // Idempotency: a re-run (or a duplicated delivery) must not stack reactions.
+            const existing = await github.paginate(github.rest.reactions.listForIssueComment, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: commentId,
+              per_page: 100,
+            });
+            const mine = existing.find((reaction) => reaction.user?.login === 'github-actions[bot]');
+            if (mine) {
+              core.info(`comment ${commentId} already acknowledged with :${mine.content}:`);
+              return;
+            }
+
+            core.info(
+              `comment=${commentId} palette=[${palette.join(', ')}] chosen=:${emoji}: dry_run=${dryRun}`,
+            );
+            if (dryRun) return;
+
+            await github.rest.reactions.createForIssueComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: commentId,
+              content: emoji,
+            });
+            core.info(`reacted :${emoji}: to comment ${commentId}`);

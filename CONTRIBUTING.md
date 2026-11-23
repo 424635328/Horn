@@ -102,6 +102,14 @@ spotless so the vendored bytes stay reproducible.
 - Adding a skill requires a concrete artifact it produced in this repo (file, PR or ADR); skills
   that were only tried and produced nothing are not vendored (`archify` was rejected this way).
 
+## Comment feedback
+
+PR comments from humans get one reaction from the bot (`comment-feedback.yml`) as a quiet
+"received" signal — no reply, no thread noise. The palette is `+1 / rocket / eyes / heart /
+hooray`, picked deterministically from the comment id, and can be overridden with the repository
+variable `COMMENT_REACTION_EMOJIS`. Bot comments are ignored, so Dependabot's own acknowledgement
+is never echoed.
+
 ## Safety red lines
 
 - Never allocate, lock, log or do I/O on the audio render callback path.

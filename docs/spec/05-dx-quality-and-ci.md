@@ -194,6 +194,17 @@ Release 构建 MUST 开启代码与资源压缩：`app/build.gradle.kts` 的 rel
 - `.github/workflows/pr-hygiene.yml`：`title-check` 以 `amannn/action-semantic-pull-request@v5` 校验 Conventional Commits 标题（types：feat/fix/perf/refactor/ui/audio/docs/test/build/ci/chore）；`label` 以 `actions/labeler@v5`（配置 `.github/labeler.yml`，`sync-labels: true`)自动打标。
 - `.github/workflows/update-screenshots.yml`：workflow_dispatch 手动触发（可选 ref），job `record`（Record Linux Baselines）在 ubuntu-latest 运行 `./gradlew recordRoborazziDebug`，上传 `roborazzi-baselines-linux` 产物（14 天），维护者下载覆盖 `app/src/test/screenshots/` 后本地 `verifyRoborazziDebug` 复核再提交。该流程是跨平台字体差异的唯一合法基准刷新通道。
 
+### 5.4 comment-feedback.yml（评论回执）
+
+`.github/workflows/comment-feedback.yml` 给 **PR 上的人类评论**补一个轻量回执：从调色板里选一个 reaction 贴上，作为"已读/收到"的信号，不产生任何评论、不刷屏。
+
+- **触发**：`issue_comment: [created]`；只处理 `issue.pull_request != null` 且 `comment.user.type != 'Bot'` 的评论（Dependabot 自己的 👍 不回贴，避免回声）。
+- **选择**：默认调色板 `+1 / rocket / eyes / heart / hooray`，按 `comment_id % palette.length` 确定性取一个——同一条评论永远得到同一个表情，工作流重跑不会漂移。
+- **可配置**：仓库变量 `COMMENT_REACTION_EMOJIS`（逗号分隔，最多 8 个）覆盖调色板；非法值被丢弃，为空回落默认。
+- **幂等**：先列该评论已有 reactions，若 `github-actions[bot]` 已存在则直接退出，重复投递不叠加。
+- **手动验证**：`gh workflow run comment-feedback.yml -f comment_id=<id> -f emoji=rocket -f dry_run=false`；`dry_run` 默认 `true`，只打印决策不落 reaction，防止误触发刷屏。
+- **权限**：`issues: write` + `pull-requests: write`（reaction API 属于 issues 命名空间）；其余 `contents: read`。
+
 ## 6. 测试金字塔
 
 ```mermaid
