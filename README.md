@@ -78,7 +78,7 @@
 |:---:|:---:|
 | ![Car dark EN](docs/assets/showcase-car-dark-en.png) | ![Train light ZH](docs/assets/showcase-train-light-zh.png) |
 
-| 深色 · Custom 声学工坊 · 横屏大屏 | 浅色 · Moto · 1.35x 大字体 |
+| 深色 · Custom 音色 · 横屏大屏 | 浅色 · Moto · 1.35x 大字体 |
 |:---:|:---:|
 | ![Custom expanded dark](docs/assets/showcase-custom-expanded-dark.png) | ![Moto light font](docs/assets/showcase-moto-light-font135.png) |
 

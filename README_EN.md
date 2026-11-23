@@ -85,7 +85,7 @@ All waveforms are built as 2048-point normalized harmonic wavetables at construc
 |:---:|:---:|
 | ![Car dark EN](docs/assets/showcase-car-dark-en.png) | ![Train light ZH](docs/assets/showcase-train-light-zh.png) |
 
-| Dark · Custom Lab · expanded dashboard | Light · Moto · 1.35x font scale |
+| Dark · Custom voice · expanded cockpit | Light · Moto · 1.35x font scale |
 |:---:|:---:|
 | ![Custom expanded dark](docs/assets/showcase-custom-expanded-dark.png) | ![Moto light font](docs/assets/showcase-moto-light-font135.png) |
 
