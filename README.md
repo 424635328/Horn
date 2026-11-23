@@ -27,7 +27,7 @@
 - 面对突然贴身狂按的电瓶车？当场切到**隧道回响模式**，拉响 311 Hz + 370 Hz + 494 Hz 美式重载火车三音气喇叭，完成声学维度的降维打击；
 - 甚至懒得掏手机？抬起 Wear OS 手表按一下，或者盲按口袋里的物理音量键，深藏功与名。
 
-本来只想写个 `Button` 放个 MP3，结果工程师强迫症发作，一不小心把它写成了带 C++ 音频内核、AGSL 着色器、80 张像素级视觉回归基准图和全自动 CI 的工业级项目。素材？不存在的。所有声音都是实时算出来的——就像真正的愤怒，应当即兴发生。
+本来只想写个 `Button` 放个 MP3，结果工程师强迫症发作，一不小心把它写成了带 C++ 音频内核、机加工仪表级 UI、80 张像素级视觉回归基准图和全自动 CI 的工业级项目。素材？不存在的。所有声音都是实时算出来的——就像真正的愤怒，应当即兴发生。
 
 ## 战术反击装备库
 
@@ -60,14 +60,15 @@
 
 ### 全平台生态
 
-- **Apple Glass 液态玻璃视觉体系**：三层玻璃面板（真实背景虚化 + 1.5% 微颗粒抗色带 + AGSL 镜面折射描边）、
-  五车型深浅双主题环境光色板、全套弹簧物理动效（Snappy / Fluid / TactileOrb / 橡皮筋）；
-  API 33+ AGSL → 31–32 `RenderEffect` 模糊 → 26–30 磨砂降级，探测失败绝不崩溃；
-- Android 13+ **AGSL `RuntimeShader`** 拟真金属光压涟漪，API 26–32 自动降级高质量 Canvas；
-- 横屏 / 平板 / 折叠屏 **WindowSizeClass 仪表盘**布局（左控制岛，右超大方向盘按钮）；
+- **精密汽车座舱视觉体系（Precision Automotive Cockpit）**：两套材质——**陶瓷日光**（哑光陶瓷底 + 白色机加工面板 + 石墨刻线）
+  与**隐身碳纤**（碳黑底 + 阳极氧化面板 + 单侧高光）；工程网格基底、1 dp 高光缝 / 底缝、四角卡尺标记、刻线标尺、
+  5 音色各自的仪表强调色（深浅双色板，全部经 JVM 对比度测试守住 WCAG AA 4.5:1）；
+- **240° 动圈式 Expression 表盘 + 60 格 RMS 压力环**：指针与刻度在 `drawWithCache` 内逐帧直读，按住鸣笛不触发任何重组；
+- 主题三挡 **AUTO / DAY / NIGHT**（DataStore 持久化，`ThemeMode` 枚举稳定字符串键），系统栏图标极性随解析后的主题翻转；
+- 横屏 / 平板 / 折叠屏 **WindowSizeClass 座舱布局**（左：音色 + 声场 + 遥测仪表盘，右：超大机加工仪表按键）；
 - **Jetpack Glance 桌面微件**（1×1 / 2×2 自适应，礼貌双鸣 Bi-Bi）与**快捷设置磁贴**；
 - **Wear OS 手表远程引爆**：`MessageClient` 低延迟指令 `/horn/command`（START/STOP），手机端 `/horn/status` 回传状态，通信协议抽象可离线单测；
-- Debug 包专属 **DSP 实时示波器浮层**：真实消费音频环形缓冲区的 256 采样波形、实时延迟 / xrun / 单帧耗时（等宽数字 tnum），一键导出 Kotlin 调音常量——Release 包编译期零侵入剔除。
+- Debug 包专属 **荧光双踪 DSP 示波器**：左/右声道真实波形（磷光绿 / 仪表琥珀）叠加在深绿示波管栅格上，实时延迟 / xrun / 单帧耗时全部等宽 tabular 数字；Release 包编译期零侵入剔除。
 
 ## 真实界面预览
 
@@ -100,7 +101,7 @@ graph TD
     CA[":core:audio<br/>Oboe C++ · 零 GC 引擎 · DSP"]
     CD[":core:data<br/>DataStore · Wear 协议"]
     CH[":core:haptic<br/>触觉引擎"]
-    DS[":core:designsystem<br/>Apple Glass · 主题 · AGSL · 图标"]
+    DS[":core:designsystem<br/>座舱 Token · 主题 · 图标"]
     BM[":benchmark<br/>DSP 性能断言"]
     BP[":baselineprofile<br/>Baseline Profile 生成"]
 
@@ -142,7 +143,7 @@ flowchart LR
 | Spotless + ktlint 1.8.0 | `spotlessApply` 一键统一格式，`spotlessCheck` 卡住手滑 |
 | Detekt 1.23.8 | 静态分析零 Error，配置在 `config/detekt/detekt.yml` |
 | Konsist 0.17.3 | 架构防腐：模块边界 / ViewModel 归属 / 音频模块零全局可变状态 |
-| Roborazzi 1.79.0 | 5 音色 × 2 主题 × 2 语言 × 2 字号 × 2 布局 = **80 张**像素级视觉回归基准 |
+| Roborazzi 1.79.0 | 5 音色 × 2 主题 × 2 语言 × 2 字号 × 2 布局 = **80 张**主界面基准 + 6 张开屏定格帧，全部像素级回归 |
 | Baseline Profiles | `:baselineprofile` 实测生成冷启动/切换/鸣笛关键路径基线 |
 | GitHub Actions | 5 个并行检查 Job + 单一 `ci-gate` 聚合门禁 + APK 体积追踪 |
 

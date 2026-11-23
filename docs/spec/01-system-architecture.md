@@ -32,7 +32,7 @@ graph TD
     CA[":core:audio<br/>HornSession · DSP · 双后端引擎"]
     CD[":core:data<br/>HornPreferencesRepository · WearProtocol"]
     CH[":core:haptic<br/>AndroidHornHaptics"]
-    DS[":core:designsystem<br/>Apple Glass 设计 Token"]
+    DS[":core:designsystem<br/>Precision Cockpit 设计 Token"]
     BM[":benchmark<br/>DSP 性能基准"]
     BP[":baselineprofile<br/>Baseline Profile 生成"]
     BL["build-logic<br/>约定插件 horn.android.*"]
@@ -73,16 +73,16 @@ graph TD
 |---|---|---|---|
 | `:app` | 组合根与单 Activity 宿主：`di/AppContainer` 手工装配、`MainActivity` 生命周期与音量键路由、Wear 消息服务、Glance 微件与 Quick Tile | `HornApplication`、`MainActivity` | `AppContainer` MUST NOT 向 feature 代码暴露可变全局单例；`wear/WearCommandBus` 仅进程内使用 |
 | `:wear` | 手表端 UI 与 MessageClient 收发（`WearMainActivity`、`WearLink`）；与手机共享 `applicationId` `com.industrial.horn` | `WearMainActivity` | 不得依赖 `:core:audio`——音频只在手机侧渲染 |
-| `:feature:horn` | 展示层：`HornScreen`、`HornButton`、`HornTypeSelector`、`CustomLabSheet`、`SafetyUi` 与 `presentation/HornViewModel` | `HornScreen` composable、`HornViewModel`、`HornUiState` | MUST NOT 导入 `android.media.*`；MUST NOT 直接持有引擎 |
+| `:feature:horn` | 展示层：`HornScreen`、`HornInstrumentPad`、`HornTypeSelector`、`CustomLabSheet`、`SafetyUi`、`StartupOverlay` 与 `presentation/HornViewModel` | `HornScreen` composable、`HornViewModel`、`HornUiState` | MUST NOT 导入 `android.media.*`；MUST NOT 直接持有引擎 |
 | `:core:audio` | 音频域：`HornSession` 会话边界、双后端引擎、程序化 DSP、遥测、安全策略 | `HornSession`、`HornSessionFactory`、`HornAudioEngine`、`HornType`、`AcousticSpace`、`CustomHornProfile`、`AudioTelemetry` | `DefaultHornSession` 为 `internal`；MUST NOT 依赖任何 UI 框架；MUST NOT 存在顶层 `var` |
-| `:core:data` | 持久化与跨端协议：`HornPreferencesRepository`（接口）、`DataStoreHornPreferencesRepository`、`WearProtocol` | `HornPreferencesRepository`、`HornSettings`、`WearProtocol`、`HornPreferencesRepositoryFactory` | DataStore 文件名 `horn_preferences` 仅由 Factory 构造 |
+| `:core:data` | 持久化与跨端协议：`HornPreferencesRepository`（接口）、`DataStoreHornPreferencesRepository`、`ThemeMode`、`WearProtocol` | `HornPreferencesRepository`、`HornSettings`、`ThemeMode`、`WearProtocol`、`HornPreferencesRepositoryFactory` | DataStore 文件名 `horn_preferences` 仅由 Factory 构造 |
 | `:core:haptic` | 触觉反馈：`AndroidHornHaptics`、`HapticPattern` | `HornHapticFeedback` 实现 | 依赖 `:core:audio` 的音色枚举，不得反向 |
-| `:core:designsystem` | Apple Glass 设计 Token 与组件：`AppleGlass`、`AppleMotion`、`Theme`、`GlassComponents` | 主题与组件 composable | MUST NOT 导入 `android.media.*` |
+| `:core:designsystem` | Precision Cockpit 设计 Token 与仪表组件：`Color`、`Theme`、`Motion`、`CockpitCanvas`、`MachinedPanel`、`TactileKeycap`、`InstrumentDial`、`PrecisionExpressionGauge`、`InstrumentSlider` | 主题、Token 与组件 composable | MUST NOT 导入 `android.media.*`；MUST NOT 依赖任何业务模块 |
 | `:benchmark` | `DspPerformanceTest`：DSP 渲染基准；专用 `benchmark` build type，产出 `assembleBenchmark` 供 CI 门禁 | 无运行时 API | 单元测试经 `testImplementation` 引用 `:core:audio` |
 | `:baselineprofile` | `BaselineProfileGenerator`，`self-instrumenting` 测试模块 | 无 | `targetProjectPath = ":app"` |
 
 `:app` 当前 `versionCode = 3`、`versionName = 3.0.0`（`app/build.gradle.kts`）；源码注释中的
-"v3.5 Apple Glass" 指视觉世代命名（见 `feature/horn/src/main/java/com/industrial/horn/ui/HornButton.kt`），
+"v4.0 Precision Cockpit" 指视觉世代命名（见 `feature/horn/src/main/java/com/industrial/horn/ui/HornScreen.kt`），
 MUST NOT 与 Gradle 版本号混用。
 
 ### 1.2 build-logic 约定插件
@@ -194,8 +194,8 @@ stateDiagram-v2
 | 3 | 回前台（`onResume`） | 仅恢复 50 ms 遥测轮询；MUST NOT 自动恢复鸣笛，须重新按压 | `MainActivity.kt` `onResume` → `onHostResume` |
 | 4 | 音频焦点丢失（`LOSS` / `LOSS_TRANSIENT` / `LOSS_TRANSIENT_CAN_DUCK`） | 会话 `panicSilently()`（停引擎、弃焦点、取消震动）并发出 `Interrupted(AUDIO_FOCUS_LOST)`，状态回 `Idle` | `core/audio/src/main/java/com/industrial/horn/audio/AudioFocusManager.kt`、`DefaultHornSession.kt` |
 | 5 | 路由变噪（拔耳机 `ACTION_AUDIO_BECOMING_NOISY`） | 同上，`InterruptionReason.AUDIO_BECOMING_NOISY` | `DefaultHornSession.kt` `noisyReceiver` |
-| 6 | 手势滑出圆形热区 | Initial pass 消费 move 使 `waitForUpOrCancellation` 返回 null → `onPressCancel` 立即平滑止音，MUST NOT 等到抬手 | `feature/horn/src/main/java/com/industrial/horn/ui/HornButton.kt` `isInsideCircle`/`awaitEachGesture` |
-| 7 | 协程取消 / 组合销毁 | `awaitEachGesture` 的 `finally` 兜底 `onPressCancel` + expression 归零（防"幽灵卡音"） | `HornButton.kt` `finally` 块 |
+| 6 | 手势滑出圆形热区 | Initial pass 消费 move 使 `waitForUpOrCancellation` 返回 null → `onPressCancel` 立即平滑止音，MUST NOT 等到抬手 | `feature/horn/src/main/java/com/industrial/horn/ui/HornInstrumentPad.kt` `isInsideCircle`/`awaitEachGesture` |
+| 7 | 协程取消 / 组合销毁 | `awaitEachGesture` 的 `finally` 兜底 `onPressCancel` + expression 归零（防"幽灵卡音"） | `HornInstrumentPad.kt` `finally` 块 |
 | 8 | 鸣笛中切换音色 | 先 `setExpression(0f)` + `session.stop()`（释放包络），旧声部静默后引擎才换波形；新音色在下次 `start()` 生效 | `HornViewModel.kt` `onSelectHorn` 与类注释 "voice change during a held honk first calls stop"；`core/audio/src/main/java/com/industrial/horn/audio/HornRenderer.kt` `reconcileType` |
 | 9 | Wear 远程指令 | 仅 `STARTED` 生命周期内生效：`repeatOnLifecycle(Lifecycle.State.STARTED)` 收集 `WearCommandBus`；后台命令 MUST NOT 触发鸣笛 | `MainActivity.kt` `onCreate`、`app/src/main/java/com/industrial/horn/wear/WearCommandBus.kt` |
 | 10 | 音量键触发（可选） | `ACTION_DOWN`（`repeatCount == 0`）启动、`ACTION_UP` 停止；禁用时事件透传系统音量控制 | `MainActivity.kt` `dispatchKeyEvent` |

@@ -27,7 +27,7 @@ If you have ever been startled mid-crosswalk by a car horn and realized you were
 - An e-bike rider honking from two centimeters away? Switch to **Tunnel mode** and fire the 311 Hz + 370 Hz + 493.88 Hz American heavy-haul train chime. That is not escalation; that is acoustic dominance.
 - Too lazy to reach for the phone? Tap your Wear OS watch, or blindly press the physical volume key in your pocket. Nobody will ever know.
 
-It started as "a `Button` that plays an MP3". Then engineering OCD kicked in, and somehow it grew a C++ audio core, an AGSL shader, 80 pixel-perfect visual-regression baselines and a full CI pipeline. Sampled audio assets? None. Every sound is synthesized in real time — because true indignation should be improvised.
+It started as "a `Button` that plays an MP3". Then engineering OCD kicked in, and somehow it grew a C++ audio core, a machined instrument UI, 80 pixel-perfect visual-regression baselines and a full CI pipeline. Sampled audio assets? None. Every sound is synthesized in real time — because true indignation should be improvised.
 
 ## The arsenal
 
@@ -60,16 +60,22 @@ All waveforms are built as 2048-point normalized harmonic wavetables at construc
 
 ### Ecosystem
 
-- **Apple Glass liquid-glass design system**: three-layer glass panels (true backdrop blur +
-  1.5% micro-grain anti-banding + AGSL specular refraction rim), per-voice ambient palettes for
-  both themes, and a full spring-physics motion kit (Snappy / Fluid / TactileOrb / rubber-band);
-  degrades AGSL (API 33+) → `RenderEffect` blur (31–32) → frosted fallback (26–30) and never
-  crashes when a capability probe fails.
-- Android 13+ **AGSL `RuntimeShader`** metallic pressure ripples, with a high-quality Canvas fallback on API 26–32.
-- Landscape / tablet / foldable **WindowSizeClass dashboard** layout (control island left, giant steering-wheel button right).
+- **Precision Automotive Cockpit design system**: two materials — *Ceramic Daylight* (matte ceramic
+  canvas, white machined plates, graphite engraving) and *Stealth Carbon* (carbon black, anodised
+  plates, single-side highlight). Engineering-grid substrate, 1 dp light seam / shadow seam, caliper
+  corner marks, printed graduations, and one instrument accent per voice — every pair contrast-gated
+  at WCAG AA 4.5:1 by a JVM test, not by taste.
+- **240° moving-coil expression gauge + 60-tick RMS pressure ring**: needle, graduations and ticks are
+  read inside `drawWithCache`, so holding the horn redraws at frame rate without a single recomposition.
+- **Three-position theme**: AUTO / DAY / NIGHT persisted in DataStore (`ThemeMode` with stable string
+  keys); system-bar icon polarity follows the resolved palette under edge-to-edge.
+- Landscape / tablet / foldable **WindowSizeClass cockpit** (voice + room + telemetry plates left,
+  oversized machined instrument pad right).
 - **Jetpack Glance widget** (adaptive 1×1 / 2×2, polite bi-bi double honk) and a **Quick Settings Tile**.
 - **Wear OS remote detonation**: low-latency `MessageClient` commands on `/horn/command` (START/STOP) with `/horn/status` telemetry back; the protocol is abstracted so both sides unit-test without Play Services.
-- Debug-only **DSP oscilloscope overlay**: real samples from the 256-sample telemetry ring, live latency / xrun / per-frame µs in tabular figures, one-tap "copy as Kotlin constants" — compiled out of release builds entirely.
+- Debug-only **fluorescent dual-trace DSP scope**: real left/right channel samples (phosphor green /
+  instrument amber) on a dark green graticule, with latency, xrun and per-frame µs in tabular figures —
+  compiled out of release builds entirely.
 
 ## Real screenshots
 
@@ -102,7 +108,7 @@ graph TD
     CA[":core:audio<br/>Oboe C++ · zero-GC engine · DSP"]
     CD[":core:data<br/>DataStore · Wear protocol"]
     CH[":core:haptic<br/>Haptic engine"]
-    DS[":core:designsystem<br/>Apple Glass · Theme · AGSL · icons"]
+    DS[":core:designsystem<br/>Cockpit tokens · theme · icons"]
     BM[":benchmark<br/>DSP performance assertions"]
     BP[":baselineprofile<br/>Baseline Profile generator"]
 
@@ -144,7 +150,7 @@ flowchart LR
 | Spotless + ktlint 1.8.0 | `spotlessApply` for one-key formatting, `spotlessCheck` to catch slips |
 | Detekt 1.23.8 | Static analysis, zero errors, config in `config/detekt/detekt.yml` |
 | Konsist 0.17.3 | Architecture firewall: module boundaries, ViewModel placement, no mutable globals in the audio module |
-| Roborazzi 1.79.0 | 5 voices × 2 themes × 2 locales × 2 font scales × 2 layouts = **80** pixel-level baselines |
+| Roborazzi 1.79.0 | 5 voices × 2 themes × 2 locales × 2 font scales × 2 layouts = **80** pixel-level baselines + 6 frozen startup frames |
 | Baseline Profiles | `:baselineprofile` generates cold-start / voice-switch / honk critical-path profiles on a real device |
 | GitHub Actions | 5 parallel check jobs + single `ci-gate` aggregator + APK size tracking |
 

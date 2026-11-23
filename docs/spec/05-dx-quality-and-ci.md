@@ -27,7 +27,7 @@ Debug 实现的硬约束：
 - 遥测展示 MUST 来自真实 `AudioTelemetry`（`engineName`、`rms`、`latencyMs`、`xrunCount`、`renderTimeMicros`、`isPlaying`），严禁合成装饰数据。
 - 示波器 MUST 消费真实波形环形缓冲：`FloatArray(256)` 采样，`LaunchedEffect` 以 33 ms 周期调用 `readWaveform(scratch)` 拉取并拷贝渲染，MUST NOT 伪造波形。
 - 测试锚点 MUST 稳定：容器 `testTag("debug_audio_overlay")`，展开按钮 `testTag("debug_overlay_toggle")`。
-- 数值行 MUST 使用等宽数字：`fontFeatureSettings = AppleNumbers.TABULAR`（`"tnum"`，定义见 `core/designsystem/src/main/java/com/industrial/horn/ui/theme/AppleMotion.kt`），防止数值刷新跳动。
+- 数值行 MUST 使用等宽数字：`fontFeatureSettings = HornNumbers.TABULAR`（`"tnum"`，定义见 `core/designsystem/src/main/java/com/industrial/horn/ui/theme/Type.kt`），防止数值刷新跳动。
 
 Release 实现 MUST 为空实现：不引入状态、不消费遥测、不分配内存，保证调试面在编译期即从 release 产物中消失（系统不变量 I6）。
 
@@ -50,7 +50,7 @@ Release 实现 MUST 为空实现：不引入状态、不消费遥测、不分配
 | Android Lint | AGP Lint（`app/lint.xml`） | `./gradlew lintDebug` | `abortOnError = true`、`warningsAsErrors = true` |
 | 架构约束 | Konsist 0.17.3 | `./gradlew :app:testDebugUnitTest`（ArchitectureTest） | 4 条规则任一违反即红 |
 | DSP 声学/性能断言 | JUnit 4（JVM） | `./gradlew :core:audio:testDebugUnitTest` | 15 个测试类；渲染预算与零分配断言 |
-| 视觉回归 | Roborazzi 1.79.0 + Robolectric 4.18.1 | `./gradlew verifyRoborazziDebug` / `./gradlew recordRoborazziDebug` | 80 张基准逐像素一致 |
+| 视觉回归 | Roborazzi 1.79.0 + Robolectric 4.18.1 | `./gradlew verifyRoborazziDebug` / `./gradlew recordRoborazziDebug` | 80 张主界面 + 6 张开屏定格帧逐像素一致 |
 | DSP 性能基准 | `:benchmark` DspPerformanceTest | `./gradlew :benchmark:assembleBenchmark` + `./gradlew testDebugUnitTest` | 五音色渲染显著快于实时 |
 
 ### 2.1 Spotless + ktlint
@@ -96,7 +96,7 @@ Release 实现 MUST 为空实现：不引入状态、不消费遥测、不分配
 
 `app/src/test/java/com/industrial/horn/ui/ScreenshotMatrixTest.kt` 的矩阵契约：
 
-- 维度：5 音色（`HornType` 全枚举）× 2 主题（dark/light）× 2 语言（en/zh）× 2 字号（1.0 / 1.35）× 2 布局（compact `w360dp-h800dp-xhdpi` / expanded `w840dp-h800dp-xhdpi`）= 80 张基准。
+- 维度：5 音色（`HornType` 全枚举）× 2 主题（dark/light）× 2 语言（en/zh）× 2 字号（1.0 / 1.35）× 2 布局（compact `w360dp-h800dp-xhdpi` / expanded `w840dp-h800dp-xhdpi`）= 80 张主界面基准；另有 `StartupOverlaySnapshotTest` 的 6 张开屏定格帧（3 帧 × 2 主题）使用独立 `startup_wake_*` 命名空间。
 - 运行器：`RobolectricTestRunner` + `@Config(sdk = [35])` + `@GraphicsMode(GraphicsMode.Mode.NATIVE)`，`captureRoboImage` 写入 `app/src/test/screenshots/`，命名 `{voice}_{dark|light}_{en|zh}_{font1_0|font1_35}_{compact|expanded}.png`。
 - 任务语义：`./gradlew recordRoborazziDebug` 录制基准；`./gradlew verifyRoborazziDebug` 逐像素验证。
 - 跨平台约束：字体光栅化在 Windows 与 Linux 存在像素级差异，基准 MUST 以 Linux 渲染为准；重录 MUST 通过 `.github/workflows/update-screenshots.yml` 在 Linux 执行（§5.3）。Windows 本地录制的基准严禁直接入库。
@@ -187,7 +187,7 @@ Release 构建 MUST 开启代码与资源压缩：`app/build.gradle.kts` 的 rel
 
 ```mermaid
 graph TD
-    T3["顶层 · 设备与基准: DspPerformanceTest(:benchmark) BaselineProfileGenerator(:baselineprofile) connectedDebugAndroidTest"] --> T2["中层 · 视觉回归: ScreenshotMatrixTest 80 张 Roborazzi 基准 verifyRoborazziDebug"]
+    T3["顶层 · 设备与基准: DspPerformanceTest(:benchmark) BaselineProfileGenerator(:baselineprofile) connectedDebugAndroidTest"] --> T2["中层 · 视觉回归: ScreenshotMatrixTest 80 张 + 开屏 6 帧 Roborazzi 基准 verifyRoborazziDebug"]
     T2 --> T1["底层 · DSP 与领域单测: core/audio 15 个测试类 含 RenderBudgetTest ZeroGcAudioPathTest"]
     T1 --> T0["基座 · 协议/存储/交互/架构: WearProtocolTest HornPreferencesRepositoryTest HapticSignatureTest HornViewModelTest ArchitectureTest"]
 ```
@@ -222,7 +222,7 @@ graph TD
 
 - Debug 源码集实现：`feature/horn/src/debug/java/com/industrial/horn/ui/DebugAudioOverlay.kt`
 - Release NoOp 实现：`feature/horn/src/release/java/com/industrial/horn/ui/DebugAudioOverlay.kt`
-- tnum 常量：`core/designsystem/src/main/java/com/industrial/horn/ui/theme/AppleMotion.kt`
+- tnum 常量：`core/designsystem/src/main/java/com/industrial/horn/ui/theme/Type.kt`
 - 约定插件：`build-logic/convention/src/main/kotlin/horn.android.application.gradle.kts`、`build-logic/convention/src/main/kotlin/horn.android.library.gradle.kts`、`build-logic/convention/src/main/kotlin/horn.android.wear.gradle.kts`
 - 根构建脚本（Spotless/Detekt）：`build.gradle.kts`
 - 版本目录：`gradle/libs.versions.toml`

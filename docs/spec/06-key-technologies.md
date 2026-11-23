@@ -43,15 +43,15 @@ flowchart LR
 | 技术/工具 | 版本 | 在本项目中的用途 | 选型理由/权衡 | 源码锚点 |
 |---|---|---|---|---|
 | Jetpack Compose | BOM 2025.06.01 | 手机端与 Wear OS 全部 UI | 声明式单代码库；BOM 统一 Compose 家族版本避免矩阵漂移 | `gradle/libs.versions.toml` |
-| Material 3 | BOM 2025.06.01 | 基础组件与主题骨架（在 Apple Glass Token 之下） | 成熟可访问性基线；视觉层被自研设计系统覆盖 | `core/designsystem/src/main/java/com/industrial/horn/ui/theme/Theme.kt` |
+| Material 3 | BOM 2025.06.01 | 基础组件与主题骨架（在 Cockpit Token 之下，`ColorScheme` 映射到同一 canvas/panel） | 成熟可访问性基线；视觉层被自研设计系统覆盖 | `core/designsystem/src/main/java/com/industrial/horn/ui/theme/Theme.kt` |
 | WindowSizeClass | material3-window-size-class | compact/expanded 双布局断点（360dp / 840dp 视觉基准） | 断点驱动而非机型硬编码，折叠屏/平板自动受益 | `app/src/main/java/com/industrial/horn/MainActivity.kt` |
-| Apple Glass 设计系统（AppleGlassSurface 三层玻璃） | 自研 | 霜面 + 1.5% 微颗粒 + 定向高光三层玻璃质感 | iOS 级质感须自绘；三层可分别降级 | `core/designsystem/src/main/java/com/industrial/horn/ui/theme/AppleGlass.kt` |
-| AGSL RuntimeShader | Android API 33+ | 玻璃边缘折射与金属光场（Audio Aura） | GPU 逐像素质感，渲染成本恒定；能力探测失败自动降级 | `core/designsystem/src/main/java/com/industrial/horn/ui/theme/AppleGlass.kt`、`core/designsystem/src/main/java/com/industrial/horn/ui/theme/AudioAura.kt` |
-| RenderEffect 背景虚化 | Android API 31+ | backdrop blur 真背景虚化（自模糊不可替代） | API 31+ 平台原生；31 以下降级为渐变高光 | `core/designsystem/src/main/java/com/industrial/horn/ui/theme/AppleGlass.kt`、`feature/horn/src/main/java/com/industrial/horn/ui/HornScreen.kt` |
-| 微颗粒抗色带 | 自研 | 固定种子 LCG 生成 1.5% 确定性微颗粒 | 消除 8-bit 渐变色带，同时保证 Roborazzi 截图字节稳定 | `core/designsystem/src/main/java/com/industrial/horn/ui/theme/AppleGlass.kt` |
-| AppleMotion 弹簧物理 | 自研（Compose spring 体系） | 全局动效预设（按压缩放、滑移、切换） | 统一物理参数，手感一致；比关键帧动画更耐打断 | `core/designsystem/src/main/java/com/industrial/horn/ui/theme/AppleMotion.kt` |
-| 延迟读取零重组（Deferred Read） | Compose graphicsLayer / drawWithCache | RMS 包络、按压缩放、气压位移等高频视觉状态只重绘不重组 | 重组风暴是帧率杀手；延迟读取把状态变化限制在 draw 阶段（不变量 I7） | `feature/horn/src/main/java/com/industrial/horn/ui/HornVisuals.kt`、`feature/horn/src/main/java/com/industrial/horn/ui/HornScreen.kt` |
-| derivedStateOf 帧率治理 | Compose runtime | 环境光网格相位量化（约 18.75 effective fps 才失效重绘） | 连续动画量化为离散档位，静止画面零无效化 | `core/designsystem/src/main/java/com/industrial/horn/ui/theme/AmbientMeshBackground.kt` |
+| Precision Cockpit 设计系统 | 自研（v4.0） | 陶瓷日光 / 隐身碳纤双材质：工程网格、1dp 高光缝、发丝边、卡尺角标、刻线标尺 | 纯填充 + 1px 描边即可获得机加工质感，渲染成本低且跨设备逐像素一致 | `core/designsystem/src/main/java/com/industrial/horn/ui/theme/Color.kt`、`MachinedPanel.kt` |
+| 仪表几何（车削盘面 + 240° 表圈 + 60 格压力环） | 自研 | HornInstrumentPad / InstrumentDial / PrecisionExpressionGauge | 几何暗示代替真实金属反射；比例冻结（`GaugeGeometry`）便于回归 | `core/designsystem/src/main/java/com/industrial/horn/ui/theme/InstrumentDial.kt`、`PrecisionExpressionGauge.kt` |
+| 材质对比度门禁 | 自研 JVM 断言（WCAG 2.2） | 双色板 × 文本/强调/故障/护耳全组合对比度断言，含正控与负控 | 把"好看"变成可复算数字，防止低对比审美回归 | `app/src/test/java/com/industrial/horn/ui/theme/CockpitPaletteTest.kt` |
+| 主题三挡（AUTO/DAY/NIGHT） | DataStore + CompositionLocal + WindowInsetsController | 用户偏好持久化；解析后主题驱动调色板与系统栏图标极性 | 显式三挡优于跟随系统开关；edge-to-edge 下系统栏极性只能由应用决定 | `core/data/src/main/java/com/industrial/horn/data/ThemeMode.kt`、`app/src/main/java/com/industrial/horn/MainActivity.kt` |
+| HornMotion 机械弹簧 | 自研（Compose spring 体系） | 键帽短行程、指示片位移、表针一次过冲、面板展开 | 临界阻尼为主，手感像机构而不是橡皮球；比关键帧动画更耐打断 | `core/designsystem/src/main/java/com/industrial/horn/ui/theme/Motion.kt` |
+| 延迟读取零重组（Deferred Read） | Compose graphicsLayer / drawWithCache / offset 读值 | RMS 包络、按压行程、气压位移、扫描带相位等高频视觉状态只重绘/重排不重组 | 重组风暴是帧率杀手；延迟读取把状态变化限制在 draw/layout 阶段（不变量 I7） | `feature/horn/src/main/java/com/industrial/horn/ui/HornInstrumentPad.kt`、`core/designsystem/src/main/java/com/industrial/horn/ui/theme/CockpitCanvas.kt` |
+| drawWithCache 几何缓存 | Compose ui-graphics | 全屏工程网格 Path、车削环几何按尺寸构建一次 | 避免每帧重建 Path/梯度；空闲时零工作（不变量 I8） | `core/designsystem/src/main/java/com/industrial/horn/ui/theme/CockpitCanvas.kt` |
 | Glance 微件 | 1.1.1 | 桌面微件一键短鸣 | Compose 式 API 但运行于 RemoteViews，开发体验统一 | `app/src/main/java/com/industrial/horn/widget/HornWidget.kt` |
 | TileService | 平台 API | Quick Settings Tile 快捷开关 | 系统级入口、免解锁路径 | `app/src/main/java/com/industrial/horn/widget/HornTileService.kt` |
 | Wear OS Compose | BOM 2025.06.01 | 手表端遥控 UI | 与手机共享 Compose 技能栈与主题 Token | `wear/src/main/java/com/industrial/horn/wear/WearMainActivity.kt` |
@@ -91,7 +91,7 @@ flowchart LR
 |---|---|---|---|---|
 | JUnit4 | 4.13.2 | 全仓单测基座 | Android 测试生态默认选择，Robolectric/Roborazzi 兼容最好 | `gradle/libs.versions.toml` |
 | Robolectric | 4.18.1 | JVM 无头运行 Android 测试（SDK 35 模拟） | 无需设备，秒级反馈；平台渲染细节以能力探测兜底 | `app/src/test/java/com/industrial/horn/ui/ScreenshotMatrixTest.kt` |
-| Roborazzi | 1.79.0 | 视觉回归：80 张基准矩阵（5 音色 × 2 主题 × 2 语言 × 2 字号 × 2 布局） | 像素级回归替代人眼验收；跨平台字体差异走 Linux 重录 SOP | `app/src/test/screenshots/`、`app/src/test/java/com/industrial/horn/ui/ScreenshotMatrixTest.kt` |
+| Roborazzi | 1.79.0 | 视觉回归：80 张主界面矩阵（5 音色 × 2 主题 × 2 语言 × 2 字号 × 2 布局）+ 6 张开屏定格帧 | 像素级回归替代人眼验收；跨平台字体差异走 Linux 重录 SOP | `app/src/test/screenshots/`、`app/src/test/java/com/industrial/horn/ui/ScreenshotMatrixTest.kt` |
 | Konsist 架构守护（4 条） | 0.17.3 | feature/designsystem 禁 android.media、core:audio 禁 Compose、ViewModel 归 presentation 包、实时音频模块禁顶层可变态 | 架构约束测试化，违规即红 | `app/src/test/java/com/industrial/horn/architecture/ArchitectureTest.kt` |
 | DSP 声学/频谱 QA | 本仓库自研 | RMS、峰值、谱重心、过零率、幅度谱、detuned-pair 等测量工具驱动逐音色断言 | 声学结论全部可机器复算 | `core/audio/src/test/java/com/industrial/horn/audio/DspMeasurement.kt` |
 | 立体声/混响 QA | 本仓库自研 | 单声道折叠安全（能量损失 <3 dB、200 Hz–2 kHz 陷波 <6 dB）、混响有界性测试；RT60 偏差 ±15% 为契约验收口径 | 折叠红线可测化 | `core/audio/src/test/java/com/industrial/horn/audio/HornSynthesizerContractTest.kt`、`core/audio/src/test/java/com/industrial/horn/audio/SceneEngineTest.kt`、`docs/spec/research/02-spatial-scene-acoustics.md` |

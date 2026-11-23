@@ -1,7 +1,13 @@
 # ADR-0010: 开屏动画 Optical Wake —— 单时钟 f(t) 自绘 + core-splashscreen 无缝交棒
 
-- 状态：Accepted
+- 状态：Accepted（v4.0 材质更新见 [ADR-0011](ADR-0011-precision-automotive-cockpit.md)）
 - 日期：2026-11-22
+
+> **v4.0 更新说明**：本决策的**机制**（单时钟 f(t)、闩锁、可跳过、无缝 Splash 交棒、零重组）
+> 全部保留且仍为现行契约；仅**画面材质**由玻璃球改为机加工表盘（材质/几何/主题见 ADR-0011 与
+> `docs/spec/03 §11`）。因此下文对 AGSL/`GlassCapabilities`/`AppleMotion` 的引用属于历史记录，
+> 现行实现见 `core/designsystem/src/main/java/com/industrial/horn/ui/theme/StartupWake.kt`、
+> `Motion.kt` 与 `feature/horn/src/main/java/com/industrial/horn/ui/StartupOverlay.kt`。
 
 ## 背景与问题
 
