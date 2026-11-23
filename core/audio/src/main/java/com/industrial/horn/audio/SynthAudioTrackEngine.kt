@@ -30,6 +30,9 @@ class SynthAudioTrackEngine(
         require(framesPerBlock > 0) { "framesPerBlock must be positive" }
     }
 
+    // java.lang.Object is intentional: this monitor uses wait/notifyAll, which kotlin.Any
+    // does not expose. Kotlin 2.4 deprecates the platform type, hence the suppression.
+    @Suppress("PLATFORM_CLASS_MAPPED_TO_KOTLIN")
     private val lock = java.lang.Object()
     private val _events =
         MutableSharedFlow<HornAudioEvent>(
