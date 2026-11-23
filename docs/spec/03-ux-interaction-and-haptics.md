@@ -204,7 +204,7 @@ v4.0 显式移除毛玻璃与背景虚化：视觉不再依赖 `RuntimeShader`/`
 | Compact（竖屏单手） | 顶栏（品牌 + 主题键 + 工坊键）+ 状态轨 + 仪表盘 + 底部机加工控制台 + 脚注 | `HornScreen` `compact_layout` |
 | Medium / Expanded（横屏/平板/折叠展开） | 左：音色 + 声场控制台 + 遥测仪表盘；右：超大仪表盘 | `HornScreen` `expanded_layout` |
 
-大屏 MUST 零遮挡、零挤压；1.35× 无障碍大字体 MUST 零裁切（`ScreenshotMatrixTest` 1.35x 档覆盖 80 张基准）。
+大屏 MUST 零遮挡、零挤压；1.35× 无障碍大字体 MUST 零裁切（`ScreenshotMatrixTest` 1.35x 档覆盖 80 张基准；仪表状态由 `InstrumentDialSnapshotTest` 的 6 帧覆盖）。
 
 ## 7. 触觉指纹规约（`:core:haptic`）
 

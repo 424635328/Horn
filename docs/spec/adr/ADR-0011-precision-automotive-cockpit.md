@@ -74,7 +74,7 @@ v3.5 的 Apple Glass 视觉体系建立在三层玻璃（背景虚化 + 磨砂 +
 - 车削环、滚花、螺钉、卡尺角标是几何暗示而非真实反射，近看不如真实材质。
 - 1px 发丝线在极低 dpi 设备可能渲染为 1.5–2px 灰边，需靠 `hairlineStrong` 与文本对比度兜底。
 - `FontFamily.Monospace` 在个别 OEM 字体下回退为比例数字，故所有数值样式同时声明 `tnum`。
-- 删除六个文件并重写主界面属于破坏性重构，必须一次性更新 80+6 张基准图与三份规约。
+- 删除六个文件并重写主界面属于破坏性重构，必须一次性更新 80+6+6 张基准图与三份规约。
 
 ## 相关文件与测试
 
@@ -96,5 +96,5 @@ v3.5 的 Apple Glass 视觉体系建立在三层玻璃（背景虚化 + 磨砂 +
 
 - `./gradlew checkAll` 绿（spotless / detekt / lint / 单测 / Roborazzi 校验）。
 - `CockpitPaletteTest` 8 项断言全绿，含 1 项负控。
-- `ScreenshotMatrixTest` 80 张 + `StartupOverlaySnapshotTest` 6 张基准全部重录并通过校验。
+- `ScreenshotMatrixTest` 80 张 + `StartupOverlaySnapshotTest` 6 张 + `InstrumentDialSnapshotTest` 6 张基准全部重录并通过校验。
 - `HornViewModelTest` 覆盖主题循环（AUTO→DAY→NIGHT→AUTO）、同步切换、同值不写盘、冷启动恢复。
