@@ -130,7 +130,7 @@ class MainActivity : ComponentActivity() {
                         withFrameNanos { now ->
                             frameMeter.record((now - previous) / 1_000_000f)
                             previous = now
-                            wakeClock.floatValue = ((now - origin) / 1_000_000f).coerceAtMost(1_040f)
+                            wakeClock.floatValue = ((now - origin) / 1_000_000f).coerceAtMost(StartupTimeline.TOTAL_MS)
                         }
                     }
                 }
@@ -212,7 +212,7 @@ class MainActivity : ComponentActivity() {
                                     if (startupDone) {
                                         1f
                                     } else {
-                                        StartupTimeline.mergeProgress(wakeClock.floatValue)
+                                        StartupTimeline.revealProgress(wakeClock.floatValue)
                                     }
                                 },
                             )
@@ -234,7 +234,7 @@ class MainActivity : ComponentActivity() {
                                     },
                                     exiting = startupExiting,
                                     elapsedProvider = { wakeClock.floatValue },
-                                    onBloomHaptic = ::lightHapticTick,
+                                    onMilestoneHaptic = ::lightHapticTick,
                                 )
                             }
                         }

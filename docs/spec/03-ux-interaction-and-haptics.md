@@ -252,68 +252,142 @@ v4.0 显式移除毛玻璃与背景虚化：视觉不再依赖 `RuntimeShader`/`
   `fontFeatureSettings = "tnum"`，即使字体回退也保持等宽数字。
 - Roborazzi 基准对系统字体光栅化敏感，跨平台差异 MUST 走 `update-screenshots.yml` Linux 重录 SOP（见 05 规约）。
 
-## 11. 开屏动画与启动体验（Cold-Start Calibration, v4.1；原 Optical Wake v3.7）
+## 11. 开屏动画与启动体验（Cold-Start Film v5.0）
 
 > 关联决策：[ADR-0010 开屏动画：单时钟自绘与无缝交棒](adr/ADR-0010-startup-optical-wake-animation.md)、
-> [ADR-0011 精密汽车座舱](adr/ADR-0011-precision-automotive-cockpit.md)（v4.0 换材质，v4.1 换视觉词汇）。
-> 冷启动一次性品牌时刻：扫描线底 + 四角 reticle + boot 日志 + 表盘点亮 + 刻度与雷达环扫入 + 光标式字标
-> 擦除 + **上下遮片合拢的中线交棒**。它是一段「仪器开机自检」，不是 logo 动画。
+> [ADR-0011 精密汽车座舱](adr/ADR-0011-precision-automotive-cockpit.md)。
+> 方法论真源：仓库内 skill [`.agents/skills/startup-animation`](../../.agents/skills/startup-animation/SKILL.md)——
+> **六幕分镜、单时钟 f(t)、线稿聚合、预热交棒、降级矩阵、帧预算验收**逐条落地。
+> v5.0 起开屏是一段 **10.4 s 的品牌短片**：脉冲唤醒 → 仪表自检 → 品牌线稿聚合 → 上色 → 肖像 HUD → 遮片合拢交棒。
+> v4.1 的四幕 1.04 s 版本只覆盖了 skill 分镜的**前半段**（脉冲 + 身份），缺线稿聚合与其后的三幕，故整体重做。
 
-### 11.1 四幕时间轴（单时钟 t = elapsed ms）
+### 11.1 六幕时间轴（单时钟 t = elapsed ms）
 
-总时长 ≈ 1040ms（预算带 800–1150ms）；一切视觉状态均为 t 的纯函数 f(t)，任意时刻可定格复现。
+总时长 **10400 ms**；一切视觉状态均为 t 的纯函数 f(t)，任意时刻可定格复现。阶段投影由
+`StartupTimeline.stageOf(t)` 唯一决定（验收脚本与单测都断言它，而不是靠肉眼）。
+
+```mermaid
+flowchart LR
+    P["PULSE<br/>0–1150"] --> I["IDENTITY<br/>1000–4200"]
+    I --> D["DRAWING<br/>4200–7200"]
+    D --> C["COLORIZE<br/>7200–7700"]
+    C --> O["PORTRAIT<br/>7700–9600"]
+    O --> S["SHUTTER<br/>9600–10400"]
+    S -->|"9600 一次性 reveal"| H["宿主界面接棒"]
+```
 
 | 时刻 | 阶段 | 元素 | 入出公式 |
 | --- | --- | --- | --- |
-| 0–160 | WAKE 唤醒 | 表盘剪影 + 四角 reticle | `scale = 0.62 + 0.10·smoothstep(0, 160, t)`；`alpha = smoothstep(0, 160, t)`；`reticle = smoothstep(0, 220, t)`（臂长 26dp × reticle） |
-| 160–300 | FOCUS 聚焦 | boot 日志逐行浮现 | `line_k = smoothstep(180+300k, 320+300k, t)`，k ∈ {0,1,2}（180/480/780 ms 起） |
-| 160–500 | FOCUS 聚焦 | 60 格刻度顺时针扫入 | `ring = smoothstep(160, 460, t)`，可见格数 `⌊ring × 60⌋`；每 5 格加长、每 15 格强调色 |
-| 160–500 | FOCUS 聚焦 | 雷达虚线环旋转 | `dash = smoothstep(160, 500, t)` 控制出现；`rotation = 0.010·(t − 160)°`（慢速，非装饰性抖动） |
-| 160–560 | FOCUS 聚焦 | 斜向光扫横穿一次 | `scan = smoothstep(160, 560, t)`；光带位移 `x = (−0.45 + 1.9·scan)·W`，alpha `1 − |0.5 − scan|·1.2` |
-| 160–500 | FOCUS 聚焦 | 表圈高光弧 + 十字准星 | `focus = smoothstep(160, 500, t)` 驱动 34° 高光弧旋转；准星臂长 1.58R→1.78R |
-| 500–820 | BLOOM 绽放 | 表盘落位 | `scale = 0.72 + 0.28·settle(smoothstep(500, 820, t))`（同源欠阻尼微过冲 ≈12%，精确落位 1.0） |
-| 500–820 | BLOOM 绽放 | 12 路声压喷口 | `ventPhase = ((t−500)/260) % 1`，第 k 路相位 `(ventPhase + k/12) % 1`，半径 `1.27R → 1.61R`，alpha `(1−p)·0.45` |
-| 500–820 | BLOOM 绽放 | 校准点 ×3 | `glint_i = smoothstep(t_i, t_i+60, t) × (1 − smoothstep(t_i+120, t_i+260, t))`，`t_i = 520+85i` |
-| 540–820 | BLOOM 绽放 | 字标擦除入场 | `reveal = smoothstep(540, 820, t)`；`clipRect(right = W·reveal)` 擦除 + 18dp 上浮；**字距静态 6sp，禁做动画** |
-| t=560 | BLOOM 绽放 | 轻触觉 ×1 | 单次轻触觉脉冲（`HAPTIC_MS = 560`；无马达/系统触觉关闭 → 静默降级） |
-| 820–1040 | MERGE 融合 | reveal 闩锁 | t=820 一次性发出；主界面自转场下层接棒、错峰 40ms `KeySpring` 浮现 |
-| 820–1000 | MERGE 融合 | 上下遮片向表盘轴线合拢 | `shutter = smoothstep(820, 1000, t)`；上片高 `(0.42H − gap)·shutter`、下片高 `(0.58H − gap)·shutter`，边缘 1dp 接缝 + 12dp 内阴影 |
-| 930–1040 | MERGE 融合 | 一次性闪白 | `flash = smoothstep(930, 985, t) × (1 − smoothstep(985, 1040, t))`，叠加 `accent@12%` |
-| 1000–1040 | MERGE 融合 | 中线收窄 + 覆盖层淡出 | `line = 1 − smoothstep(1000, 1040, t)`；中线半宽 `0.26W·(1 − 0.55·shutter)·line`；`alpha = 1 − smoothstep(980, 1040, t)`；t=1040 彻底移出组合树 |
+| 0–1150 | PULSE 脉冲 | 三圈相位环 + 12 路声压喷口 + 四角 reticle | 环相位 `(t·0.00075 + i·0.33) % 1`，半径 `0.46R → 1.16R`，alpha `(1−p)²·0.55`；喷口相位 `(t/260) % 1`，第 k 路错峰 `k/12`；reticle 臂长 `smoothstep(0, 320, t)` |
+| 1000–1650 | IDENTITY 身份 | 表盘点亮 | `alpha = smoothstep(1000, 1650, t)`；`scale = 0.94 + 0.06·settle(smoothstep(1000, 1900, t))` |
+| 1200–2140 | IDENTITY | 三行 boot 日志 | `line_k = smoothstep(1200+400k, 1340+400k, t)`，k ∈ {0,1,2} |
+| 1200–2600 | IDENTITY | 60 格刻度顺时针扫入 | `sweep = smoothstep(1200, 2600, t)`，可见格 `⌊60·sweep⌋`，每 5 格加长、每 15 格强调色 |
+| 1300–1900 | IDENTITY | 48 段雷达虚线环 + 慢转 + 十字准星 | 虚线 `alpha = smoothstep(1300, 1900, t)`，`rotation = 0.010·(t−1300)°`；准星 `smoothstep(1400, 1900, t)`，臂 `1.58r → 1.78r` |
+| 1700–2400 | IDENTITY | 字标擦除入场 | `title = smoothstep(1700, 2400, t)`；`clipRect(right = W·title)` + 18dp 上浮；**字距静态 6sp，禁做动画** |
+| 2300–2560 | IDENTITY | 校准点 ×3 | `glint_i = smoothstep(t_i, t_i+60, t)·(1 − smoothstep(t_i+120, t_i+260, t))`，`t_i = 2300+220i` |
+| t=2400 | IDENTITY | 轻触觉 ×1 | 单次轻触觉（`HAPTIC_MS = 2400`，与字标擦除完成同一帧） |
+| 4000–4500 | IDENTITY→DRAWING | 24 段身份块散开 | `spread = smoothstep(4000, 4500, t)`，`alpha = 1−spread`，径向位移 `40dp·spread` |
+| 4200–7200 | DRAWING 线稿聚合 | 品牌轮廓碎片 | `p = clamp((t−4200)/3000)`；归位前沿 `front = 1.5p − 0.25`；单片到达度 `arrival = smooth((front − x/W + 0.055)/0.11)`；尺寸 `0.16+0.84·arrival`；旋转 `angle·(1−arrival)`；未归位漂移 `±7dp·(1−arrival)` |
+| 4200–4350 | DRAWING | 线稿显影 | `lineAlpha = 1 − smoothstep(4200, 4350, t)` 的反向权重（线稿在 150 ms 内显影） |
+| 7200–7700 | COLORIZE 上色 | 线稿 → 彩图交叉淡化 | `mix = smoothstep(7200, 7700, t)`：线稿 alpha `1−mix`、彩图 alpha `mix`，**同几何对齐**；Ken Burns `scale 1 → 1.012` |
+| 7700–9600 | PORTRAIT 肖像 | 字幕 / 粒子 / 一次性光扫 | 字幕 `caption_k = smoothstep(7800+600k, 7940+600k, t)`；粒子 `heartbeat(t−7700−170i, 1080)·0.55`；光扫 `smoothstep(7900, 8800, t)`；Ken Burns 续到 `1.020` |
+| t=9600 | SHUTTER 遮片 | reveal 闩锁 | 一次性发出；主界面自下层接棒（错峰 40 ms 浮现） |
+| 9600–10400 | SHUTTER 遮片 | 画面纵向合拢 | `collapse = smoothstep(9600, 10400, t)`；内容层 `scaleY(1−collapse)`（最低 0.001），始终绕光学轴 `0.42H` 收缩 |
+| 9600–10120 | SHUTTER | 底衬溶解 | `background = 1 − smoothstep(9600, 10120, t)`：合拢的两半之间露出真实界面 |
+| 9600–10400 | SHUTTER | 中线收窄 | `pinch = smoothstep(9600, 10400, t)`；中线半宽 `0.5W·(1−pinch)`，`2dp` 亮线 + `10dp` 辉光 |
+| 9900–10330 | SHUTTER | 一次性闪白 | `flash = smoothstep(9900, 10050, t)·(1 − smoothstep(10050, 10330, t))`，峰值 10050 |
+| 10000–10400 | SHUTTER | 残层淡出 | `alpha = 1 − smoothstep(10000, 10400, t)`；t = 10400 彻底移出组合树 |
 
-公式语义（全部为 t 的纯函数，禁 setTimeout/多时钟排程）：
+每幕一帧定格（深色主题，取自冻结时钟；说明分镜用，**不是** Roborazzi 基准）：
 
-- `smoothstep(a, b, x) = s²(3-2s)`，其中 `s = clamp((x-a)/(b-a), 0, 1)`——全片唯一缓动原语（C¹ 连续段）。
-- `settle(p)`：确定性解析欠阻尼阶跃（ζ=0.55、ω=9，与 `KeySpring` 同源的机加工手感），微过冲后精确收敛 1.0；
-  属里程碑曲线推导，不引缓动库。
-- `% 1`：相位循环取小数部分（声压喷口发射节律）。
-- 时间轴常量（1040/160/500/820/560/120/40/1000/930/985/980）单点集中于 `StartupTimeline`（`core/designsystem/src/main/java/com/industrial/horn/ui/theme/StartupWake.kt`）。
+| PULSE 0.7 s | IDENTITY 2.4 s | DRAWING 5.6 s |
+| --- | --- | --- |
+| ![PULSE 脉冲](../assets/startup-film/pulse.png) | ![IDENTITY 身份](../assets/startup-film/identity.png) | ![DRAWING 线稿聚合](../assets/startup-film/drawing.png) |
 
-### 11.1.1 视觉词汇（boot 序列）
+| COLORIZE 7.4 s | PORTRAIT 8.6 s | SHUTTER 9.9 s |
+| --- | --- | --- |
+| ![COLORIZE 上色](../assets/startup-film/colorize.png) | ![PORTRAIT 肖像](../assets/startup-film/portrait.png) | ![SHUTTER 合拢交棒](../assets/startup-film/shutter.png) |
+
+公式语义（全部为 t 的纯函数，禁 setTimeout／多时钟排程）：
+
+- `smoothstep(a, b, x) = s²(3−2s)`，`s = clamp((x−a)/(b−a), 0, 1)`——全片唯一缓动原语（C¹ 连续）。
+- `settle(p)`：确定性解析欠阻尼阶跃（ζ=0.55、ω=9，与 `KeySpring` 同源的机加工手感），微过冲后精确收敛 1.0。
+- `heartbeat(t, T) = ((1 − cos(2πt/T))/2)²`：呼吸/粒子，比正弦更「有机」。
+- `% 1`：相位循环，用于脉冲环、声压喷口、粒子错峰。
+- 里程碑曲线 `progress(t)`：`[时间比, 进度比] = [[0,0],[.12,.06],[.35,.41],[.56,.76],[.66,.924],[.72,.97],[.77,1],[1,1]]`，
+  底部同步条与整体节奏共用一条曲线（8.0 s 时进度到 1，正好落在上色完成之后）。
+- 时间轴常量与公式单点集中于 `core/designsystem/src/main/java/com/industrial/horn/ui/theme/StartupWake.kt`
+  （`StartupTimeline`、`StartupStage`、`smoothstep`/`settle`/`heartbeat`/`phaseLoop`）。
+
+### 11.1.1 素材管线：参考图 → 轮廓线稿 → 等弧长碎片 → 按 X 归位
+
+开屏的「画」是一张参考图 `feature/horn/src/main/res/drawable-nodpi/startup_hero.png`（658 × 877）。
+按 skill 的位图管线落地，边缘检测在**构建期**跑一次：
+
+```
+startup_hero.png（658×877，633 KB）
+  → tools/startup-hero/extract-contours.mjs（离线）
+    PNG 解码 → 灰度 → Sobel → 非极大值抑制 → 边缘行走 → 抽稀 → 归一化折线
+  → assets/startup/hero_contours.bin（1000 条折线 / 24 108 点 / 96 KB，sha256 前 16 位 c5da357f4b876a75）
+  → 运行时按画布尺寸映射 → 等弧长切碎片（span = max(3dp, 总弧长/900)）
+  → 每片：质心 + 相对点 + 确定性散射位（sin-hash）+ 旋转角 + 漂移相位
+  → 24 个纵向列：已归位列 1 条预建 Path（1 次 draw），飞行中的列合并进 1 条 scratch Path
+  → 归位完成后与参考图本体交叉淡化（同几何、同 transform-origin）
+```
+
+- **重活只做一次**：边缘检测在构建期，列 Path / 三角函数表 / 笔刷在 `drawWithCache` 里按 size 构建一次；
+  每帧只重写一条 scratch `Path`（`rewind()` 复用，零分配）。参考图解码与素材解析放在 IO 线程异步完成
+  —— 首帧不被 633 KB 解码拖住（预热纪律），而最晚使用点是 IDENTITY（1.0 s）与 COLORIZE（7.2 s）。
+- **素材可复算**：`node tools/startup-hero/extract-contours.mjs --check` 校验素材与参考图是否一致，
+  脚本内部跑两次提取并逐字节比对（确定性）；`StartupContourTest` 断言素材真的打进了包。
+- **确定性**：散射位用 `frac(sin(n·12.9898)·43758.5453)`，禁用随机数——scrub／replay／定格可逐位复现。
+- **归位先后跟目标 X 走**：参考图左侧先落定、右侧发梢最后落定；飞行窗口收窄到 `0.11`
+  （skill 的 0.32 是为更高密度线稿留的），于是任意一帧只有 ≤2 列在飞，帧预算可控。
+
+### 11.1.2 视觉词汇（boot 序列）
 
 | 元素 | 规格 | 为什么 |
 | --- | --- | --- |
 | 扫描线底 | 每 3dp 一条 1px 横线，透明度 0.04–0.05 | 让整屏读作「显示器」而不是「壁纸」 |
 | 四角 reticle | 26dp 内缩、26dp 臂长、1.2dp 描边，左上角一个强调色刻度 | 取景器/仪表的固定语法，同时给出画面边界 |
-| boot 日志 | 等宽 9sp、字距 2sp、三行错峰 300ms，公开事实（`ACOUSTIC CORE` / `48 kHz · 2CH` / `DIAL 60`） | HUD 叙事；不使用任何无法核实的「系统消息」 |
-| 序列标记 | 右上 `SEQ 1.04 s` 静态文本 | 时间码若逐帧刷新会不停触发布局；静态令牌同样传达「一段固定流程」 |
-| 同步进度条 | 底部 168dp，1px 轨 + 强调填充 + 820ms 闩锁刻度 | 把「还有多久可以操作」可视化，替代不可读的百分比 |
+| boot 日志 | 等宽 9–10sp、字距 2sp、三行错峰 400ms，公开事实（`ACOUSTIC CORE` / `48 kHz · 2CH` / `DIAL 60`） | HUD 叙事；不使用任何无法核实的「系统消息」 |
+| 序列标记 | 右上 `SEQ 10.40 s` 静态文本 | 时间码若逐帧刷新会不停触发布局；静态令牌同样传达「一段固定流程」 |
+| 同步进度条 | 底部 168dp，1px 轨 + 强调填充 + **9600ms 闩锁刻度** | 把「还有多久可以操作」可视化，替代不可读的百分比 |
 | 雷达虚线环 | 48 段、1px、强调色 22%、`0.010°/ms` 慢速旋转 | 静态刻度 + 慢旋转＝「在扫描」，不引入噪声粒子 |
-| 字标 | 26sp 粗体、字距 6sp 静态、`clipRect` 擦除、下挂 96dp 强调细线 | 字距动画会逐帧重排版，属明确禁止项（见 skill 的「字距不做动画」） |
-| 交棒 | 上下遮片合拢（表盘轴线）+ 1dp 接缝 + 12dp 内阴影 + 中线收窄 + 一次性闪白 | 「关机/合拢再交棒」比淡出更像机械动作，也避免与主界面争抢注意力 |
+| 身份头像 | 参考图按 cover 裁成圆形压在表盘中心（直径 = 表盘半径 × 1.24） | 第 2 幕先「认出这张脸」，第 3 幕碎片散开重组成同一张画，叙事连续 |
+| 字标 | 26sp 粗体、字距 6sp 静态、`clipRect` 擦除、下挂 96dp 强调细线 | 字距动画会逐帧重排版，属明确禁止项 |
+| 字幕 | 两行 9sp 等宽、错峰 600ms、只改图层 alpha | 肖像幕的「字幕」词汇；零文本重排 |
+| 粒子 | ≤6 个 2.2dp 点，`heartbeat` 呼吸 + 缓慢上浮 | 少量缓慢运动即可，不是越多越好 |
+| 交棒 | 内容纵向合拢（绕 0.42H 光学轴）+ 底衬溶解 + 中线收窄 + 一次性闪白 | 「关机/合拢再交棒」比淡出更像机械动作，也让真实界面从两半之间露出来 |
 
-### 11.1.2 降级（reduce motion）
+### 11.1.3 降级（reduce motion）
 
 - 系统动画时长为 0 或 `LocalReducedMotion` 为真：`StartupCoordinator` 直接 `Bypassed(REDUCED_MOTION)`，覆盖层不出现。
-- 覆盖层内部同样有兜底：`LocalReducedMotion` 为真时以 `t = TOTAL_MS` 渲染（终态静态帧），不启动内部时钟，也不播放任何动画。
+- 覆盖层内部兜底：以 `t = 8800 ms`（已上色、字幕已起、遮片未开始）渲染**静态终帧**，无粒子、无漂移、无旋转、
+  无 Ken Burns；`420 ms` 后自我收尾，绝不空占屏幕。
+- 图片/素材解码失败一类问题在本实现中不存在（矢量几何无解码），因此没有 `assetError` 分支。
+
+### 11.1.4 参考图出处与许可
+
+| 项 | 值 |
+| --- | --- |
+| 文件 | `feature/horn/src/main/res/drawable-nodpi/startup_hero.png`（658 × 877，633 KB） |
+| sha256 | `EDFF78721B48F5C2CD26FA97DFEDD4B91C16A4E58E032F76693275C6178A0AB4` |
+| 来源 | 由项目方提供的角色插画参考图 |
+| 权利 | **版权归原权利方**；本仓库仅作开屏素材示例，作者不主张任何权利 |
+| 分发约束 | 对外分发、商用或再发布前 MUST 自行取得授权；不得把该文件当作可再分发的自由素材 |
+| 派生素材 | `feature/horn/src/main/assets/startup/hero_contours.bin` 由该图派生，随同一约束 |
+
+替换参考图时：同步更新本表、重新生成线稿素材（`node tools/startup-hero/extract-contours.mjs`）、
+重测开屏定格帧，并确认新素材的授权同样允许入库。
 
 ### 11.2 点击跳过契约
 
-- 触发：覆盖层任意区域 `detectTapGestures` 按下即触发（不等抬手、不判长按）→ `StartupCoordinator.skip()` → `Skipped`。
+- 触发：覆盖层任意区域按下即触发（不等抬手、不判长按）→ `StartupCoordinator.skip()` → `Skipped`。
 - 收起：≤120ms 阻尼弹簧（scale 1.0→0.96 + alpha→0）后覆盖层移除；120ms 是硬上限而非目标值。
 - 红线：跳过后 MUST NOT 残留任何可拦截鸣笛手势的遮罩——`horn_button` 立即可按下（Compose UI 测试锁定）。
 - 幂等：`skip()` 仅 `Playing → Skipped`，重复调用与终态调用均无操作。
-- 与 reveal 的关系：t=820 闩锁发出后，跳过仅加速覆盖层收起，MUST NOT 撤销已发出的 reveal（一次性语义）。
+- 与 reveal 的关系：t=9600 闩锁发出后，跳过仅加速覆盖层收起，MUST NOT 撤销已发出的 reveal（一次性语义）。
 - 提示：底部极低调「轻触跳过 / Tap to skip」，中英文文案 + TalkBack `contentDescription`；不遮挡主视觉。
 
 ### 11.3 智能绕过矩阵
@@ -327,6 +401,8 @@ v4.0 显式移除毛玻璃与背景虚化：视觉不再依赖 `RuntimeShader`/`
 
 - 优先级：QUICK_ACTION > WARM_START > REDUCED_MOTION（同时命中取高优先项归因）。
 - 仅冷启动播放：进程级单次守卫 `StartupPlaybackGuard` 保证同一进程至多播放一次；播放或绕过后 MUST NOT 复播。
+- **10.4 s 与紧急可达性的张力**：品牌时刻只在冷启动一次性路径出现，且三条兜底路径（快速入口 0ms、任意按下
+  ≤120ms 跳过、热启动不重播）都保持可用；这是本决策显式接受的取舍（见 ADR-0010 v5.0 附录）。
 
 ### 11.4 启动状态机
 
@@ -334,7 +410,7 @@ v4.0 显式移除毛玻璃与背景虚化：视觉不再依赖 `RuntimeShader`/`
 flowchart TD
     Cold["冷启动判定"] -->|"playbackAllowed == true 且 Guard 认领成功"| Playing["Playing 播放"]
     Cold -->|"QUICK_ACTION / WARM_START / REDUCED_MOTION"| Bypassed["Bypassed 绕过"]
-    Playing -->|"complete()（t=1040 自动收尾）"| Completed["Completed 完成"]
+    Playing -->|"complete()（t=10400 自动收尾）"| Completed["Completed 完成"]
     Playing -->|"skip()（任意区域按下，幂等）"| Skipped["Skipped 跳过"]
     Completed -->|"覆盖层移出组合树"| Done["移除覆盖层"]
     Skipped -->|"≤120ms 阻尼弹簧收起"| Done
@@ -342,24 +418,22 @@ flowchart TD
 ```
 
 - `StartupState = Playing | Completed | Skipped | Bypassed`（`StartupBypassReason = QUICK_ACTION | WARM_START | REDUCED_MOTION`）。
-- API 契约：`StartupCoordinator.skip()`（幂等）、`complete()`（幂等）、`playbackAllowed(coldStart, quickAction, reducedMotion)`
-  （冷启动 ∧ 非快速入口 ∧ 允许动效）。
+- API 契约：`StartupCoordinator.skip()`（幂等）、`complete()`（幂等）、`playbackAllowed(coldStart, quickAction, reducedMotion)`。
 - 终态（Completed/Skipped/Bypassed）均为吸收态：不再接受跳过/完成调用，覆盖层随后移出组合树。
 
 ### 11.5 Android 12+ SplashScreen 无缝衔接
 
-- 依赖官方 androidx.core:core-splashscreen；`MainActivity.onCreate` 首行 `installSplashScreen()`（契约规划接线）。
+- 依赖官方 androidx.core:core-splashscreen；`MainActivity.onCreate` 首行 `installSplashScreen()`。
 - `Theme.Horn.Starting`（parent `Theme.SplashScreen`、`postSplashScreenTheme=Theme.Horn`）深浅双份已落地：
   `app/src/main/res/values/themes.xml` 与 `app/src/main/res/values-night/themes.xml`；`windowSplashScreenBackground`
-  对齐窗口底色，系统 Splash → Optical Wake 零色跳、零白闪。
-- `setKeepOnScreenCondition` 仅等首帧就绪（覆盖层第 0 帧预热完成）即交棒；MUST NOT 人为拉长系统 Splash；
-  严禁系统 Splash 与 Optical Wake 双开屏闪烁。
-- 应用层时间轴自交棒时刻起算 t=0；系统 Splash 图标动画不并入四幕时间轴（两层时间轴解耦）。
+  对齐窗口底色，系统 Splash → Cold-Start Film 零色跳、零白闪。
+- `setKeepOnScreenCondition` 仅等首帧就绪（覆盖层第 0 帧预热完成）即交棒；MUST NOT 人为拉长系统 Splash。
+- 应用层时间轴自交棒时刻起算 t=0；系统 Splash 图标动画不并入六幕时间轴（两层时间轴解耦）。
 
 ### 11.6 静音红线
 
 - 全程零音频：MUST NOT 播放任何启动音/品牌音，音频引擎 MUST NOT 因开屏启动。
-- 全程仅 t=560 一次轻触觉（轻量 CLOCK_TICK 类）；无震动马达或系统触觉关闭时静默降级——无任何输出、无替代提示。
+- 全程仅 t=2400 一次轻触觉（轻量 CLOCK_TICK 类）；无震动马达或系统触觉关闭时静默降级。
 - 触觉经 `:core:haptic` 既有安全链路下发（无马达设备 No-Op，见 §7）。
 
 ### 11.7 性能契约
@@ -367,11 +441,11 @@ flowchart TD
 - 单时钟：一切视觉 = f(t)（t = elapsed ms 唯一时钟）；MUST NOT 以 setTimeout/多动画时钟排程。
 - 延迟读取（I7）：`elapsedProvider: () -> Float` 在 `DrawScope`/`graphicsLayer` 内读取，动画帧只重绘零重组；
   `rememberUpdatedState` 保持 Provider 新鲜而稳定。
-- 预计算一次：扫描线 Path、渐变、三角函数表等逐帧素材以 `remember`/`CacheDrawScope` 一次预计算
-  （`WakeSceneBrushes`），逐帧零分配。
-- **文字零动画**：字标字距静态（擦除用 `clipRect`），boot 日志只改图层 alpha；覆盖层内没有逐帧排版的文本，
-  因此「文字 ≤60ms」规则在此退化为「零文本重排」。
-- 移出组合树（I8 同族）：`Completed`/`Skipped`/`Bypassed` 后覆盖层 MUST 彻底移出组合树，不留图层、不留无限动画。
+- 重活一次化：几何采样/碎片切分/列 Path/渐变/三角函数表全部在 `drawWithCache` 内按 size 预计算
+  （`StartupFilmScene`），逐帧只重写一条 scratch Path。
+- 批量绘制：已归位列各自 1 条预建 Path（≤24 次 draw），飞行中的列合并进同一条 scratch Path（1 次 draw）。
+- **文字零动画**：字标擦除用 `clipRect`、boot 日志/字幕只改图层 alpha；覆盖层内没有逐帧排版的文本。
+- 移出组合树（I8 同族）：`Completed`/`Skipped`/`Bypassed` 后覆盖层 MUST 彻底移出组合树。
 - 测试注入：冻结时钟经 `elapsedProvider` 注入，任意时刻定格可复现（scrub/Roborazzi 免费）。
 - **指标自报**：debug 构建在动画完成时输出 `startup frames: n / median / p95 / slow(>33.4ms)`
   （`StartupFrameMeter`，环形缓冲零分配；release 不输出、不落日志）。「流畅」不是结论，这行日志才是。
@@ -380,12 +454,14 @@ flowchart TD
 
 - 状态机 100% 覆盖：Playing→Completed、Playing→Skipped（`skip()` 幂等重放）、旋转不重播（WARM_START）、
   QUICK_ACTION 绕过（0ms 直达）、REDUCED_MOTION 绕过、优先级 QUICK_ACTION > WARM_START > REDUCED_MOTION。
-- Compose UI 测试：任意区域按下即跳过的语义；跳过后 `horn_button` 可交互（零遮罩残留）。
-- Roborazzi 定格帧：**wake(120) / focus(300) / reveal(820) / shutter(920)** × 深浅双主题 = **8 帧**，
-  冻结时钟注入保证逐字节确定性（`startup_wake_*` 命名空间）。
-- 时间轴契约测试：`StartupTimelineTest` 断言各里程碑端点、单调性与闩锁前后关系（防止「小调」悄悄挪动时间轴）。
-- 既有 80 张主界面基准不受影响：开屏覆盖层挂载于 `app/src/main/java/com/industrial/horn/MainActivity.kt` 层，
-  HornScreen 截图天然隔离（I10 零回归）。
+- Compose UI 测试：任意区域按下即跳过的语义；跳过后 `horn_button` 可交互（零遮罩残留）；
+  闩锁时刻为 2400（触觉）/9600（reveal）/10400（完成），并含「9600 之前 reveal 必须沉默」的负控。
+- 时间轴契约测试 `StartupTimelineTest`：六幕边界与 `stageOf`、里程碑曲线、脉冲相位、身份节拍、线稿左→右归位、
+  上色窗口、肖像节拍、遮片合拢与交棒、闩锁常量、降级终帧，均断言端点与单调性。
+- Roborazzi 定格帧：**每幕 1 帧 × 深浅双主题 = 12 帧**（`pulse` 700 / `identity` 2400 / `drawing` 5600 /
+  `colorize` 7400 / `portrait` 8600 / `shutter` 9900，`startup_wake_*` 命名空间）。
+  基准 MUST 在 Linux 由 `update-screenshots.yml` 录制，Windows 本地录制严禁入库（§5.3）。
+- 既有 80 张主界面基准不受影响：覆盖层挂载于 `MainActivity` 层，HornScreen 截图天然隔离（I10 零回归）。
 
 ### 11.9 Non-Goals
 

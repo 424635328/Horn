@@ -4,7 +4,6 @@
 *.cmd text eol=crlf
 *.ps1 text eol=crlf
 *.sh text eol=lf
-
 # Never line-ending transform binary artifacts.
 *.png binary
 *.jpg binary
@@ -13,3 +12,4 @@
 *.jar binary
 *.apk binary
 *.aab binary
+*.bin binary

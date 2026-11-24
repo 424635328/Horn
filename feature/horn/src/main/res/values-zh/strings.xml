@@ -41,6 +41,7 @@
     <string name="acoustic_space_garage_description">地下车库声场</string>
     <string name="volume_trigger_label">音量键</string>
     <string name="startup_skip_hint">轻触跳过</string>
+    <string name="startup_caption_ready">系统就绪</string>
     <string name="volume_trigger_description">使用音量键作为鸣笛扳机</string>
     <string name="ear_protection_badge">护耳保护 · −6 dB</string>
     <string name="zero_volume_title">媒体音量为 0</string>

@@ -1,7 +1,13 @@
 # ADR-0010: 开屏动画 Optical Wake —— 单时钟 f(t) 自绘 + core-splashscreen 无缝交棒
 
-- 状态：Accepted（机制不变；v4.0 材质见 [ADR-0011](ADR-0011-precision-automotive-cockpit.md)，v4.1 视觉词汇见 §附录）
+- 状态：Accepted（机制不变；v4.0 材质见 [ADR-0011](ADR-0011-precision-automotive-cockpit.md)，v4.1 视觉词汇与
+  v5.0 六幕短片见附录）
 - 日期：2026-11-22
+
+> **v5.0 更新说明（2026-11-24）**：本文的**机制**（单时钟 f(t)、一次性闩锁、任意按下跳过、无缝 Splash 交棒、
+> 零重组、进程级单次守卫）全部保留且仍为现行契约；**分镜与时长**改为 skill
+> [`.agents/skills/startup-animation`](../../../.agents/skills/startup-animation/SKILL.md) 定义的**六幕 10.4 s**。
+> 下文的「1040 ms / 四幕 / 800–1150 ms 预算带」属于历史记录，现行契约见 `docs/spec/03 §11`。
 
 > **v4.0 更新说明**：本决策的**机制**（单时钟 f(t)、闩锁、可跳过、无缝 Splash 交棒、零重组）
 > 全部保留且仍为现行契约；仅**画面材质**由玻璃球改为机加工表盘（材质/几何/主题见 ADR-0011 与
@@ -24,6 +30,61 @@ v4.0 只换了材质，画面仍然「一个表盘淡入 + 一次淡出」，没
    `StartupTimelineTest` 锁定 12 个里程碑端点与单调性；定格帧从 3×2 扩为 **4 帧×2 主题**
    （wake/focus/reveal/shutter）。
 5. 详细公式与词汇表见 `docs/spec/03 §11.1 / §11.1.1 / §11.7 / §11.8`。
+
+## 附录：v5.0 六幕品牌短片（2026-11-24）
+
+v4.1 只做了 skill 分镜的**前半段**（脉冲唤醒 + 仪表身份），缺线稿聚合、上色、肖像与真正的遮片交棒。
+v5.0 按 skill 完整重做分镜，**机制一行未改**，改的是「演什么」和「演多久」。
+
+| 项 | v4.1 | v5.0 | 变化原因 |
+|---|---|---|---|
+| 总时长 | 1040 ms | **10400 ms** | skill 分镜六幕的下限（脉冲 1.15 s、身份 3.2 s、聚合 3 s、上色 0.5 s、肖像 1.9 s、交棒 0.8 s） |
+| 幕数 | 4（WAKE/FOCUS/BLOOM/MERGE） | **6（PULSE/IDENTITY/DRAWING/COLORIZE/PORTRAIT/SHUTTER）** | 补齐线稿聚合与其后三幕 |
+| 主体 | 表盘淡入淡出 | **品牌轮廓 → 碎片归位 → 上色成品牌标** | skill 的招牌效果：线稿飞散后逐段归位成画 |
+| 交棒 | 上下遮片遮住屏幕 | **内容绕光学轴纵向合拢 + 底衬溶解 + 中线收窄** | 合拢的两半之间露出真实界面，而不是「遮住再淡出」 |
+| 触觉 | t=560 | **t=2400（字标擦完的那一帧）** | 与身份幕的高潮对齐 |
+| reveal 闩锁 | t=820 | **t=9600（遮片开始的那一帧）** | 一次性语义不变，位置随分镜移动 |
+| 降级终帧 | t=1040（空幕） | **t=8800（已上色的静止帧）+ 420 ms 收尾** | 降级不能变成黑屏 |
+| 定格帧 | 4 帧 × 2 主题 | **6 帧 × 2 主题（每幕 1 帧）** | 每幕都要有像素级证据 |
+| 素材源 | 无（纯程序绘制） | **launcher 矢量品牌标 → 等弧长碎片** | 产品无位图主视觉，按 skill 参数「换源不换编排」 |
+
+**显式接受的取舍（10.4 s vs 紧急鸣笛可达性）**：品牌时刻只存在于冷启动一次性路径，三条兜底必须同时成立——
+快速入口 0 ms 直达、任意区域按下 ≤120 ms 跳过、热启动/旋转不重播；同步条把 9600 ms 闩锁刻度画出来，
+让「还有多久可操作」可见。若未来产品要求更短，MUST 通过缩短幕内节拍而不是删幕（删幕会重新丢失 skill 的后半段）。
+
+**新增落点（现行实现）**：
+
+- 时间轴/原语/仪表幕：`core/designsystem/src/main/java/com/industrial/horn/ui/theme/StartupWake.kt`
+- 素材管线与聚合/上色幕：`core/designsystem/src/main/java/com/industrial/horn/ui/theme/StartupLineArt.kt`
+- 逐帧合成器与场景预计算：`core/designsystem/src/main/java/com/industrial/horn/ui/theme/StartupFilm.kt`
+- 覆盖层/HUD/交棒接线：`feature/horn/src/main/java/com/industrial/horn/ui/StartupOverlay.kt`
+- 规约真源：`docs/spec/03-ux-interaction-and-haptics.md §11`
+
+## 附录：v5.1 开屏以参考图为「画」（2026-11-24）
+
+产品方指定了一张参考插画作为开屏的主视觉。v5.0 用 launcher 矢量标做聚合对象，本版把它换成该参考图，
+skill 的位图管线得以真正落地（此前是「换源不换编排」的近似）：
+
+| 项 | v5.0 | v5.1 |
+|---|---|---|
+| 聚合对象 | launcher 矢量品牌标（贝塞尔采样） | **参考图轮廓**（Sobel + 非极大值抑制 + 边缘行走） |
+| 边缘检测时机 | 无（矢量） | **构建期**离线跑一次（	ools/startup-hero/extract-contours.mjs） |
+| 运行期素材 | 即时几何 | ssets/startup/hero_contours.bin（1000 折线 / 24 108 点 / 96 KB） |
+| IDENTITY 头像 | 品牌标缩绘 | **参考图圆形裁切**（表盘内） |
+| COLORIZE 彩图 | 钛金喇叭标 | **参考图本体**（同几何、同 transform-origin 交叉淡化） |
+| 图幅 | 品牌标 62×40 图标单位 | 658×877 参考图，占屏宽 ≤74%、屏高 ≤44% |
+
+机制不变：单时钟 f(t)、9600 ms 一次性 reveal、任意按下 ≤120 ms 跳过、进程级单次守卫、零重组。
+新增两条纪律：
+
+1. **素材可复算**：xtract-contours.mjs 内跑两次提取并逐字节比对；--check 校验已入库素材与参考图一致；
+   StartupContourTest 断言素材真的打进 APK。
+2. **参考图版权归原权利方**：仓库只把它当示例素材，分发/商用需自行取得授权（见 docs/spec/03 §11.1.4）。
+
+**落点**：	ools/startup-hero/extract-contours.mjs（构建期管线）、	ools/startup-hero/README.md、
+eature/horn/src/main/assets/startup/hero_contours.bin、eature/horn/.../ui/StartupHeroContours.kt（解析）、
+core/designsystem/.../theme/StartupLineArt.kt（碎片与归位）、StartupFilm.kt（头像与上色）、
+eature/horn/.../ui/StartupOverlay.kt（注入与布局）。
 
 ## 背景与问题
 

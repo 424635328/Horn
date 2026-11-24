@@ -30,13 +30,14 @@ import java.util.Locale
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * Optical Wake overlay semantics and latch behaviour (docs/spec/03 §11.2 / §11.8).
+ * Cold-start film overlay semantics and latch behaviour (docs/spec/03 §11.2 / §11.8).
  *
  * The overlay timeline is a pure function of one clock, so every test injects a frozen
  * [StartupOverlay.elapsedProvider] and advances virtual time explicitly: deterministic, no
  * wall-clock sleeps, no hidden scheduling. Latch expectations come straight from
- * [com.industrial.horn.ui.theme.StartupTimeline]: haptic at 560 ms (one-shot), reveal at 820 ms
- * (one-shot), onFinished at 1040 ms (one-shot) or 120 ms after `exiting` flips true.
+ * [com.industrial.horn.ui.theme.StartupTimeline]: one milestone haptic at 2400 ms (one-shot),
+ * reveal at 9600 ms (one-shot), onFinished at 10400 ms (one-shot) or 120 ms after `exiting`
+ * flips true.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], qualifiers = "w360dp-h800dp-xhdpi")
@@ -131,12 +132,26 @@ class StartupOverlayUiTest {
     }
 
     @Test
+    fun frozenClockHoldsEveryLatch() {
+        val recorder = Recorder()
+        // The prewarm protocol: the overlay may sit mounted with its frame clock frozen at 0.00
+        // while the host is not ready yet. Nothing may fire off wall-clock time in that state.
+        startOverlay(locale = Locale.US, recorder = recorder) { 0f }
+
+        advanceVirtualTimeBy(1_500)
+
+        assertEquals("a frozen clock must not reach the haptic milestone", 0, recorder.haptics.get())
+        assertEquals("a frozen clock must not reach the reveal latch", 0, recorder.reveals.get())
+        assertEquals("a frozen clock must not finish the film", 0, recorder.finishes.get())
+    }
+
+    @Test
     fun revealLatchFiresExactlyOncePastTheRevealMilestone() {
         val recorder = Recorder()
-        // t = 900 ms: past REVEAL_LATCH_MS (820), before TOTAL_MS (1040) — the reveal window.
-        startOverlay(locale = Locale.US, recorder = recorder) { 900f }
+        // t = 9700 ms: past REVEAL_LATCH_MS (9600), before TOTAL_MS (10400) — the reveal window.
+        startOverlay(locale = Locale.US, recorder = recorder) { 9_700f }
 
-        awaitCondition("onRevealLatched to fire at t=900 >= 820") {
+        awaitCondition("onRevealLatched to fire at t=9700 >= 9600") {
             recorder.reveals.get() >= 1
         }
 
@@ -152,18 +167,18 @@ class StartupOverlayUiTest {
     @Test
     fun revealLatchStaysSilentBeforeTheRevealMilestone() {
         val recorder = Recorder()
-        // t = 700 ms: past HAPTIC_MS (560) but before REVEAL_LATCH_MS (820) — negative control.
-        startOverlay(locale = Locale.US, recorder = recorder) { 700f }
+        // t = 8000 ms: past HAPTIC_MS (2400) but before REVEAL_LATCH_MS (9600) — negative control.
+        startOverlay(locale = Locale.US, recorder = recorder) { 8_000f }
 
         advanceVirtualTimeBy(1_000)
 
         assertEquals(
-            "before t=820 the reveal latch must stay silent (negative control for the 820 ms latch)",
+            "before t=9600 the reveal latch must stay silent (negative control for the 9600 ms latch)",
             0,
             recorder.reveals.get(),
         )
         assertEquals(
-            "the bloom haptic latch at t=560 must have fired exactly once at t=700",
+            "the milestone haptic latch at t=2400 must have fired exactly once at t=8000",
             1,
             recorder.haptics.get(),
         )
@@ -172,10 +187,10 @@ class StartupOverlayUiTest {
     @Test
     fun timelineEndFiresOnFinishedExactlyOnce() {
         val recorder = Recorder()
-        // t = 2000 ms: past TOTAL_MS (1040) — the completion window.
-        startOverlay(locale = Locale.US, recorder = recorder) { 2_000f }
+        // t = 10500 ms: past TOTAL_MS (10400) — the completion window.
+        startOverlay(locale = Locale.US, recorder = recorder) { 10_500f }
 
-        awaitCondition("onFinished to fire at t=2000 >= 1040") {
+        awaitCondition("onFinished to fire at t=10500 >= 10400") {
             recorder.finishes.get() >= 1
         }
 
@@ -186,7 +201,7 @@ class StartupOverlayUiTest {
             recorder.finishes.get(),
         )
         assertEquals(
-            "the reveal latch must have fired exactly once on the way past t=820",
+            "the reveal latch must have fired exactly once on the way past t=9600",
             1,
             recorder.reveals.get(),
         )
@@ -206,7 +221,7 @@ class StartupOverlayUiTest {
                     exiting = exiting,
                     // Freeze the timeline at t=0: only the exit-collapse path may finish.
                     elapsedProvider = { 0f },
-                    onBloomHaptic = { recorder.haptics.incrementAndGet() },
+                    onMilestoneHaptic = { recorder.haptics.incrementAndGet() },
                 )
             }
         }
@@ -270,7 +285,7 @@ class StartupOverlayUiTest {
                         onFinished = { recorder.finishes.incrementAndGet() },
                         exiting = false,
                         elapsedProvider = elapsedProvider,
-                        onBloomHaptic = { recorder.haptics.incrementAndGet() },
+                        onMilestoneHaptic = { recorder.haptics.incrementAndGet() },
                     )
                 }
             }

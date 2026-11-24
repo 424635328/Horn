@@ -41,6 +41,7 @@
     <string name="acoustic_space_garage_description">Underground garage acoustic space</string>
     <string name="volume_trigger_label">VOL KEY</string>
     <string name="startup_skip_hint">Tap to skip</string>
+    <string name="startup_caption_ready">SYSTEM READY</string>
     <string name="volume_trigger_description">Use volume keys as horn trigger</string>
     <string name="ear_protection_badge">EAR PROTECTION · −6 dB</string>
     <string name="zero_volume_title">Media volume is 0</string>
