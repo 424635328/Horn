@@ -25,6 +25,9 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.ViewModelStore
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -542,6 +545,56 @@ class HornViewModelTest {
             "Idle interval must be at least 5x slower than the active one",
             HornViewModel.telemetryIntervalMs(false) >= 5 * HornViewModel.telemetryIntervalMs(true),
         )
+    }
+
+    @Test
+    fun clearingTheViewModelStopsAudioButNeverReleasesTheProcessSession() =
+        runTest(mainDispatcherRule.dispatcher) {
+            val session = FakeHornSession()
+            val viewModel = HornViewModel(session, FakePreferencesRepository())
+            runCurrent()
+
+            clearViewModel(viewModel)
+
+            assertEquals(
+                "session 是 AppContainer 的进程级对象，页面级生命周期不得 release 它",
+                0,
+                session.releaseCalls,
+            )
+            assertTrue("onCleared 仍必须把音频立即静音", session.panicCalls >= 1)
+        }
+
+    @Test
+    fun aSecondLaunchedViewModelCanStillStartTheSameSession() =
+        runTest(mainDispatcherRule.dispatcher) {
+            val session = FakeHornSession()
+            val first = HornViewModel(session, FakePreferencesRepository())
+            runCurrent()
+            first.onPressStart()
+            assertEquals(1, session.startCalls)
+            clearViewModel(first)
+
+            // 二次进入：同一个进程级 session 必须仍然可以起音（A1 的 JVM 级不变量）。
+            val second = HornViewModel(session, FakePreferencesRepository())
+            runCurrent()
+            second.onPressStart()
+
+            assertEquals("第二次进入仍必须能触发起音", 2, session.startCalls)
+            assertEquals(HornStatus.Honking, second.uiState.value.status)
+            assertEquals("整个过程不得 release 进程级 session", 0, session.releaseCalls)
+        }
+
+    private fun clearViewModel(viewModel: HornViewModel) {
+        val store = ViewModelStore()
+        val factory =
+            object : ViewModelProvider.Factory {
+                override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                    @Suppress("UNCHECKED_CAST")
+                    return viewModel as T
+                }
+            }
+        ViewModelProvider(store, factory)[HornViewModel::class.java]
+        store.clear()
     }
 
     private class FakeHornSession(

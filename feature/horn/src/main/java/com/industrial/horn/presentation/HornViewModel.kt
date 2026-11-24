@@ -293,10 +293,17 @@ class HornViewModel(
         forceStop()
     }
 
+    /**
+     * Session ownership (S1): [session] is application-scoped (see `AppContainer.session`), so it
+     * outlives every ViewModel. Releasing it here used to poison the process: the second entry into
+     * the app found an engine that could never start again. The ViewModel therefore only *stops
+     * audio* — [HornSession.release] is the process owner's call, not a screen's.
+     */
     override fun onCleared() {
         telemetryJob?.cancel()
         safetyMonitor.stop()
-        runCatching { session.release() }
+        runCatching { session.setExpression(0f) }
+        runCatching { session.panicStop() }
         super.onCleared()
     }
 
