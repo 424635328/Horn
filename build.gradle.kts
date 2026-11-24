@@ -24,10 +24,10 @@ spotless {
     }
     format("misc") {
         target("**/*.md", "**/*.yml", "**/*.yaml", "**/*.xml", "**/*.toml", "**/*.pro")
-        // skills/ is a vendored, read-only snapshot of the agent skills this project used; a
-        // formatter must not rewrite vendored bytes. Its integrity is checked by
-        // .github/scripts/check_skills.py against skills/manifest.sha256.
-        targetExclude("**/build/**", "**/.gradle/**", "skills/**")
+        // .agents/skills/ is a vendored, read-only snapshot of the agent skills this project
+        // used; a formatter must not rewrite vendored bytes. Its integrity is checked by
+        // .github/scripts/check_skills.py against .agents/skills/manifest.sha256.
+        targetExclude("**/build/**", "**/.gradle/**", "**/.agents/**")
         trimTrailingWhitespace()
         endWithNewline()
     }

@@ -88,17 +88,24 @@ Architecture contracts live in `docs/spec/`. If your change modifies a module bo
 thread rule, a lifecycle safety contract, or another system invariant, update the relevant spec
 document — or add a new MADR-style ADR under `docs/spec/adr/` — in the same PR.
 
-## Vendored agent skills (`skills/`)
+## Vendored agent skills (`.agents/skills/`)
 
-`skills/` is a **read-only, sanitized snapshot** of the agent skills this project actually used
-(doc writing, primary-source research, startup-animation methodology). It is development-time
+`.agents/skills/` is a **read-only, sanitized snapshot** of the agent skills this project actually
+used (doc writing, primary-source research, startup-animation methodology). It is development-time
 material only: it is not a Gradle module, not packaged into any artifact, and excluded from
 spotless so the vendored bytes stay reproducible.
 
+The directory name is part of the contract, not cosmetics: the harness scans
+`<projectRoot>/.agents/skills` as a project skill root, so a checkout makes these skills available
+with no per-machine install step. `.agent/skills` (singular) is not a scanned root.
+
 - Do not edit vendored content in place. Fix it upstream in the skill library and re-snapshot;
   the only allowed local edits are sanitization and repo-relative path fixes.
-- Every re-snapshot must regenerate `skills/manifest.sha256`, update the snapshot date and the
-  sanitization table in `skills/README.md`, and pass `python .github/scripts/check_skills.py`.
+- One directory per skill, one level deep, `<name>/SKILL.md`, where `<name>` is kebab-case and
+  matches the `name` in the frontmatter. Loose `.md` files at the root are not skills.
+- Every re-snapshot must regenerate `.agents/skills/manifest.sha256`, update the snapshot date and
+  the sanitization table in `.agents/skills/README.md`, and pass
+  `python .github/scripts/check_skills.py`.
 - Adding a skill requires a concrete artifact it produced in this repo (file, PR or ADR); skills
   that were only tried and produced nothing are not vendored (`archify` was rejected this way).
 

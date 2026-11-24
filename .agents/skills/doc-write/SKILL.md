@@ -79,17 +79,17 @@ description: 写一份可直接交付的中文文档——技术说明、方案�
 ## 六、机器校验
 
 ```bash
-node skills/doc-write/scripts/check-doc.mjs \
+node .agents/skills/doc-write/scripts/check-doc.mjs \
   --path ./doc.md --profile generic --json ./doc.check.json
 ```
 
-路径相对仓库根目录解析（`skills/` 已随仓库分发）。
+路径相对仓库根目录解析（`.agents/skills/` 已随仓库分发）。
 
 - `--profile generic`：标题层级、表格列数、代码块语言、相对链接、占位符、分割线空行。
 - `--profile yuque`：追加公式分隔符、`<details>`、`$$` 配对、Mermaid 子图与双向箭头。
 - 退出码：`0` 通过 / `2` 参数或路径问题 / `3` 内部错误 / `4` 有 error。`--strict` 让 warn 也失败。
 
-改检查器后先跑它自己的回归：`node --test "skills/doc-write/tests/*.test.mjs"`。
+改检查器后先跑它自己的回归：`node --test ".agents/skills/doc-write/tests/*.test.mjs"`。
 
 ## 七、交付纪律
 

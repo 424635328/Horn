@@ -1,16 +1,19 @@
 #!/usr/bin/env python3
 """Integrity, sanitization and structure gate for the vendored agent skills.
 
-`skills/` is a read-only snapshot of the skills this project actually used (see
-`skills/README.md`). This checker enforces four things:
+`.agents/skills/` is a read-only snapshot of the skills this project actually used
+(see `.agents/skills/README.md`). The path is not decoration: the harness scans
+`<projectRoot>/.agents/skills` as a project skill root, so a checkout makes these
+skills loadable without any per-machine install step. This checker enforces four
+things:
 
   1. structure   — every skill directory has a SKILL.md whose YAML frontmatter
                    declares a name matching the directory and a description;
   2. sanitization — no host paths, credentials, tokens or private keys leaked into
                    the snapshot;
   3. links        — every relative Markdown link inside a skill resolves;
-  4. manifest     — `skills/manifest.sha256` matches every vendored byte, and no
-                   file exists outside the manifest.
+  4. manifest     — `.agents/skills/manifest.sha256` matches every vendored byte,
+                   and no file exists outside the manifest.
 
 Exit codes: 0 = clean, 2 = structure/sanitization/link failure, 3 = manifest
 mismatch, 4 = self-test failure (the checker itself is broken).
@@ -25,7 +28,7 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-SKILLS_NAME = "skills"
+SKILLS_ROOT = ".agents/skills"
 MANIFEST_NAME = "manifest.sha256"
 
 SCAN_SUFFIXES = {".md", ".mjs", ".json", ".yaml", ".yml", ".txt"}
@@ -34,7 +37,17 @@ FORBIDDEN = (
     (re.compile(r"[A-Za-z]:\\+Users\\+", re.IGNORECASE), "forbidden windows user path"),
     (re.compile(r"[A-Za-z]:\\+GitHub\\+", re.IGNORECASE), "forbidden machine work path"),
     (re.compile(r"\bUSERPROFILE\b"), "forbidden host environment variable"),
-    (re.compile(r"\$HOME[/\\]\.agents|[./\\]\.agents[/\\]skills"), "forbidden host skill path"),
+    # Repo-relative `.agents/skills/...` is the documented layout and must pass; only
+    # host-absolute forms (home paths, drive letters, leading slash) are leaks. The lookbehind
+    # also rejects a preceding `/` so `../../.agents/skills/...` stays a valid relative link.
+    (
+        re.compile(
+            r"\$HOME[/\\]\.agents"
+            r"|(?<![.\w/-])(?:[A-Za-z]:[\\/]|/)[^\s\"'`)]*\.agents[\\/]skills",
+            re.IGNORECASE,
+        ),
+        "forbidden host skill path",
+    ),
     (re.compile(r"ghp_[A-Za-z0-9]{10,}"), "forbidden github token"),
     (re.compile(r"github_pat_[A-Za-z0-9_]{10,}"), "forbidden github pat"),
     (re.compile(r"\bsk-[A-Za-z0-9]{16,}"), "forbidden api key"),
@@ -47,7 +60,7 @@ LINK_RE = re.compile(r"!?\[[^\]]*\]\(\s*<?([^)>\s]+)>?\s*\)")
 
 
 def skill_dirs(root: Path) -> list[Path]:
-    base = root / SKILLS_NAME
+    base = root / SKILLS_ROOT
     if not base.is_dir():
         return []
     return sorted(path for path in base.iterdir() if path.is_dir())
@@ -117,9 +130,9 @@ def check_links(root: Path) -> list[str]:
 
 
 def check_manifest(root: Path) -> list[str]:
-    manifest = root / SKILLS_NAME / MANIFEST_NAME
+    manifest = root / SKILLS_ROOT / MANIFEST_NAME
     if not manifest.is_file():
-        return [f"{SKILLS_NAME}/{MANIFEST_NAME} missing"]
+        return [f"{SKILLS_ROOT}/{MANIFEST_NAME} missing"]
     errors: list[str] = []
     declared: dict[str, str] = {}
     for line in manifest.read_text(encoding="utf-8").splitlines():
@@ -173,7 +186,7 @@ def _manifest_for(root: Path, paths: list[Path]) -> str:
 def self_test() -> int:
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
-        good = root / SKILLS_NAME / "good"
+        good = root / SKILLS_ROOT / "good"
         skill_md = good / "SKILL.md"
         reference = good / "references" / "a.md"
         _write(
@@ -185,14 +198,15 @@ def self_test() -> int:
             "# Positive control\n\n"
             "This fixture is deliberately longer than the minimum size so the structure\n"
             "check can tell a real skill apart from a stub. It links to\n"
-            "[the reference](references/a.md) and names `skills/good/SKILL.md`.\n\n"
+            "[the reference](references/a.md) and names `.agents/skills/good/SKILL.md`,\n"
+            "i.e. the repo-relative layout, which sanitization must NOT flag.\n\n"
             "## Workflow\n\n"
             "1. Read the reference.\n"
             "2. Run the checker and require exit code 0.\n",
         )
         _write(reference, "# Reference\n\nEnough text to be a real file.\n")
         _write(
-            root / SKILLS_NAME / MANIFEST_NAME,
+            root / SKILLS_ROOT / MANIFEST_NAME,
             _manifest_for(root, [skill_md, reference]),
         )
 
@@ -203,18 +217,20 @@ def self_test() -> int:
                 print("  " + error)
             return 4
 
-        bad = root / SKILLS_NAME / "bad"
+        bad = root / SKILLS_ROOT / "bad"
         _write(
             bad / "SKILL.md",
             "---\n"
             "name: wrong\n"
-            "description: Negative control with a host path and a dead link.\n"
+            "description: Negative control with host paths and a dead link.\n"
             "---\n\n"
-            "Open C:\\Users\\dev\\secret.kt and [dead](missing.md).\n",
+            "Open C:\\Users\\dev\\secret.kt, D:\\work\\.agents\\skills\\leak\\SKILL.md\n"
+            "and [dead](missing.md).\n",
         )
         errors = check(root)
         required = (
             "forbidden windows user path",
+            "forbidden host skill path",
             "dead link -> missing.md",
             "does not match directory",
         )

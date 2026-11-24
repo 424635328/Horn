@@ -97,19 +97,22 @@ Release 实现 MUST 为空实现：不引入状态、不消费遥测、不分配
 
 `app/src/test/java/com/industrial/horn/ui/ScreenshotMatrixTest.kt` 的矩阵契约：
 
-- 维度：5 音色（`HornType` 全枚举）× 2 主题（dark/light）× 2 语言（en/zh）× 2 字号（1.0 / 1.35）× 2 布局（compact `w360dp-h800dp-xhdpi` / expanded `w840dp-h800dp-xhdpi`）= 80 张主界面基准；另有 `StartupOverlaySnapshotTest` 的 8 张开屏定格帧（wake/focus/reveal/shutter × 2 主题，`startup_wake_*` 命名空间）与 `InstrumentDialSnapshotTest` 的 6 张仪表状态帧（idle / pressure / peak × 双主题，`dial_*` 命名空间）。
+- 维度：5 音色（`HornType` 全枚举）× 2 主题（dark/light）× 2 语言（en/zh）× 2 字号（1.0 / 1.35）× 2 布局（compact `w360dp-h800dp-xhdpi` / expanded `w840dp-h800dp-xhdpi`）= 80 张主界面基准；另有 `StartupOverlaySnapshotTest` 的 12 张开屏定格帧（pulse/identity/drawing/colorize/portrait/shutter 每幕 1 帧 × 2 主题，`startup_wake_*` 命名空间）与 `InstrumentDialSnapshotTest` 的 6 张仪表状态帧（idle / pressure / peak × 双主题，`dial_*` 命名空间）。
 - 运行器：`RobolectricTestRunner` + `@Config(sdk = [35])` + `@GraphicsMode(GraphicsMode.Mode.NATIVE)`，`captureRoboImage` 写入 `app/src/test/screenshots/`，命名 `{voice}_{dark|light}_{en|zh}_{font1_0|font1_35}_{compact|expanded}.png`。
 - 任务语义：`./gradlew recordRoborazziDebug` 录制基准；`./gradlew verifyRoborazziDebug` 逐像素验证。
 - 跨平台约束：字体光栅化在 Windows 与 Linux 存在像素级差异，基准 MUST 以 Linux 渲染为准；重录 MUST 通过 `.github/workflows/update-screenshots.yml` 在 Linux 执行（§5.3）。Windows 本地录制的基准严禁直接入库。
 
 ### 2.7 随仓库分发的 skills 完整性
 
-`skills/` 是**只读、脱敏**的开发期 skill 快照（只收录本项目实际使用并产出仓库内产物的 skill），不是 Gradle 模块、不进入任何产物。
+`.agents/skills/` 是**只读、脱敏**的开发期 skill 快照（只收录本项目实际使用并产出仓库内产物的 skill），不是 Gradle 模块、不进入任何产物。
 
-- 收录证据与脱敏记录集中在 `skills/README.md`；快照字节由 `skills/manifest.sha256` 固定。
-- `check_skills.py` 校验四件事：目录/frontmatter 结构、脱敏黑名单（宿主路径/凭据/Token/私钥）、相对链接可解析、manifest 逐字节一致；`--self-test` 提供正控（合法树零误报）与负控（宿主路径、死链、name 不匹配、manifest 篡改必须变红）。
+- 目录名不是自由选择：harness 的 skill provider 把 `<projectRoot>/.agents/skills` 列为项目级 skill 根
+  （rank 200，`<projectRoot>/.dsh/skills` 为 rank 100，`$DSH_HOME/skills` 为 rank 400），
+  项目根 = 最近的含 `.git` 的祖先目录。因此**克隆即加载，无需任何安装步骤**；`.agent/skills`（单数）不是被扫描的根。
+- 收录证据与脱敏记录集中在 `.agents/skills/README.md`；快照字节由 `.agents/skills/manifest.sha256` 固定。
+- `check_skills.py` 校验四件事：目录/frontmatter 结构、脱敏黑名单（宿主绝对路径/凭据/Token/私钥）、相对链接可解析、manifest 逐字节一致；`--self-test` 提供正控（合法树零误报，含仓库相对 `.agents/skills/...` 引用不得误报）与负控（宿主路径、死链、name 不匹配、manifest 篡改必须变红）。
 - 退出码：`0` 通过 / `2` 结构或脱敏或链接失败 / `3` manifest 不一致 / `4` 自检失败。
-- CI 在 `checks` job、`pre-push` 钩子同样执行；`skills/**` 被排除在 spotless `misc` 之外，避免格式化器改写 vendored 字节。
+- CI 在 `checks` job、`pre-push` 钩子同样执行；`.agents/**` 被排除在 spotless `misc` 之外，避免格式化器改写 vendored 字节。
 - 维护规则：内容只读（回上游修改后重新快照）、重快照必须同步 manifest 与快照日期、新增 skill 必须能指出本项目产物。
 
 ## 3. Baseline Profiles
