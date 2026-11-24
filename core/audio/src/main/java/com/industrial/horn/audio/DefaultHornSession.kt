@@ -11,6 +11,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
@@ -44,9 +45,13 @@ internal class DefaultHornSession(
     private var active = false
 
     private val focusManager =
-        AudioFocusManager(appContext) {
-            interrupt(InterruptionReason.AUDIO_FOCUS_LOST)
-        }
+        AudioFocusManager(
+            context = appContext,
+            onFocusLost = { interrupt(InterruptionReason.AUDIO_FOCUS_LOST) },
+            onFocusGained = {
+                // 焦点回来后门控状态由 UI 自行刷新；session 不在这里重启音频（安全侧只做静音）。
+            },
+        )
 
     private val noisyReceiver =
         object : BroadcastReceiver() {
@@ -138,13 +143,36 @@ internal class DefaultHornSession(
         right: FloatArray,
     ): Int = engine.readWaveformStereo(left, right)
 
+    /**
+     * 平滑收尾（S8）：[HornAudioEngine.stop] 只是请求释放包络，真正静音要等渲染线程吐完尾音。
+     * 因此焦点交还延后到「引擎报告不再发声」或 [TAIL_RELEASE_MS] 上限之后，避免焦点刚交还给
+     * 上一个应用就被我们的尾音盖住；[panicStop] 仍然是立即静音 + 立即交还。
+     *
+     * 尾音等待发生在 session 自己的协程里，绝不持锁睡眠，也不阻塞调用线程。
+     */
     override fun stop() {
-        synchronized(stateLock) {
-            if (released.get()) return
-            active = false
-            engine.stop()
-            focusManager.abandonFocus()
-            haptics.stop()
+        val wasActive =
+            synchronized(stateLock) {
+                if (released.get()) {
+                    false
+                } else {
+                    active = false
+                    engine.stop()
+                    haptics.stop()
+                    true
+                }
+            }
+        if (!wasActive) return
+        scope.launch {
+            var waited = 0L
+            while (waited < TAIL_RELEASE_MS && engine.telemetrySnapshot().isPlaying) {
+                delay(TAIL_POLL_MS)
+                waited += TAIL_POLL_MS
+            }
+            synchronized(stateLock) {
+                // 尾音期间又重新开始鸣笛时不能交还焦点。
+                if (!active && !released.get()) focusManager.abandonFocus()
+            }
         }
     }
 
@@ -189,6 +217,14 @@ internal class DefaultHornSession(
                 _events.tryEmit(HornSessionEvent.EngineFailed(cause))
             }
         }
+    }
+
+    private companion object {
+        /** 尾音交还焦点的上限：超过它就不再等（硬上限，不是目标值）。 */
+        const val TAIL_RELEASE_MS = 60L
+
+        /** 尾音轮询周期：只读一次 telemetry 快照，不碰渲染线程。 */
+        const val TAIL_POLL_MS = 4L
     }
 
     private fun panicSilently() {
