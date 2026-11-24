@@ -9,11 +9,15 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.withTransform
+import androidx.compose.ui.unit.dp
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.floor
 import kotlin.math.hypot
 import kotlin.math.sin
+
+// 落定强调色的存活时间（ms）：刚归位的列闪一下，随后融回线稿色。
+private const val SETTLE_FLASH_MS = 110f
 
 /**
  * 参考图 → 线稿 → 碎片 → 归位。这条管线是 skill 的招牌效果在本项目的落地：
@@ -139,7 +143,7 @@ class ContourTemplate(
                 subjectWidth = subjectWidth,
                 subjectHeight = subjectHeight,
                 driftAmplitude = 7f * density,
-                lineStyle = Stroke(width = 1.1f * density, cap = StrokeCap.Round, join = StrokeJoin.Round),
+                lineStyle = Stroke(width = 1.35f * density, cap = StrokeCap.Round, join = StrokeJoin.Round),
             )
         }
 
@@ -301,6 +305,7 @@ fun DrawScope.drawContourAct(
     t: Float,
     template: ContourTemplate,
     lineColor: Color,
+    accent: Color,
     alpha: Float,
     reduced: Boolean,
 ) {
@@ -323,9 +328,25 @@ fun DrawScope.drawContourAct(
                 columnArrival >= 1f -> {
                     drawPath(
                         path = column.path,
-                        color = lineColor.copy(alpha = 0.62f * lineAlpha * lineIn),
+                        color = lineColor.copy(alpha = 0.74f * lineAlpha * lineIn),
                         style = template.lineStyle,
                     )
+                    // 刚落定的列额外压一层强调色 + 一道竖向扫描线：让"归位"这一下看得见。
+                    val settling = 1f - StartupTimeline.fragmentArrival(t - SETTLE_FLASH_MS, column.normalisedX)
+                    if (settling > 0.001f) {
+                        drawPath(
+                            path = column.path,
+                            color = accent.copy(alpha = 0.55f * settling * lineAlpha * lineIn),
+                            style = template.lineStyle,
+                        )
+                        val columnX = template.subjectCenter.x - template.subjectWidth / 2f + column.normalisedX * template.subjectWidth
+                        drawLine(
+                            color = accent.copy(alpha = 0.30f * settling * lineAlpha),
+                            start = Offset(columnX, template.subjectCenter.y - template.subjectHeight / 2f),
+                            end = Offset(columnX, template.subjectCenter.y + template.subjectHeight / 2f),
+                            strokeWidth = 1.dp.toPx(),
+                        )
+                    }
                 }
 
                 else -> {

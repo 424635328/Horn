@@ -63,7 +63,10 @@ class AudioFocusManager
         private val listener =
             AudioManager.OnAudioFocusChangeListener { change ->
                 when (change) {
-                    AudioManager.AUDIOFOCUS_GAIN -> onFocusGained()
+                    AudioManager.AUDIOFOCUS_GAIN -> {
+                        onFocusGained()
+                    }
+
                     AudioManager.AUDIOFOCUS_LOSS,
                     AudioManager.AUDIOFOCUS_LOSS_TRANSIENT,
                     AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK,
@@ -105,7 +108,9 @@ class AudioFocusManager
  */
 internal class FocusLedger<T : Any> {
     private val lock = Any()
-    private val held = java.util.concurrent.atomic.AtomicReference<T?>(null)
+    private val held =
+        java.util.concurrent.atomic
+            .AtomicReference<T?>(null)
 
     val isHeld: Boolean
         get() = held.get() != null

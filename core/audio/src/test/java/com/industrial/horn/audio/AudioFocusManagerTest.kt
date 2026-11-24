@@ -32,8 +32,7 @@ class AudioFocusManagerTest {
                 granted = 1,
             )
 
-        fun abandonFocus(): Boolean =
-            focusLedger.release { abandons.incrementAndGet() }
+        fun abandonFocus(): Boolean = focusLedger.release { abandons.incrementAndGet() }
 
         val isHeld: Boolean
             get() = focusLedger.isHeld

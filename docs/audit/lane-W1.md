@@ -12,11 +12,11 @@
 
 | 文件 | 行数量级 | 说明 |
 |---|---|---|
-| `feature/horn/.../presentation/HornViewModel.kt` | ~12 | `onCleared()` 不再 release 进程级 session，改为「停止音频 + 保留所有权」，并写明所有权契约 |
-| `core/audio/.../AudioFocusManager.kt` | 全文件重写（~110 行） | 抽出 `AudioFocusSystem`（可注入）与 `FocusLedger`（CAS 记账）；丢失路径也 abandon；补 `AUDIOFOCUS_GAIN` |
-| `core/audio/.../DefaultHornSession.kt` | ~35 | `stop()` 改为「请求释放 → 等静音（≤60 ms）→ 再交还焦点」，尾音等待在 session 协程里，不持锁不阻塞；`panicStop()` 保持立即 |
-| `feature/horn/src/test/.../HornViewModelTest.kt` | +55 | 新增 2 条所有权测试 |
-| `core/audio/src/test/.../AudioFocusManagerTest.kt` | 新增（~130 行） | 记账 1:1、重复交还、失败请求不入账、并发交还唯一成功者 |
+| `feature/horn/src/main/java/com/industrial/horn/presentation/HornViewModel.kt` | ~12 | `onCleared()` 不再 release 进程级 session，改为「停止音频 + 保留所有权」，并写明所有权契约 |
+| `core/audio/src/main/java/com/industrial/horn/audio/AudioFocusManager.kt` | 全文件重写（~110 行） | 抽出 `AudioFocusSystem`（可注入）与 `FocusLedger`（CAS 记账）；丢失路径也 abandon；补 `AUDIOFOCUS_GAIN` |
+| `core/audio/src/main/java/com/industrial/horn/audio/DefaultHornSession.kt` | ~35 | `stop()` 改为「请求释放 → 等静音（≤60 ms）→ 再交还焦点」，尾音等待在 session 协程里，不持锁不阻塞；`panicStop()` 保持立即 |
+| `feature/horn/src/test/java/com/industrial/horn/presentation/HornViewModelTest.kt` | +55 | 新增 2 条所有权测试 |
+| `core/audio/src/test/java/com/industrial/horn/audio/AudioFocusManagerTest.kt` | 新增（~130 行） | 记账 1:1、重复交还、失败请求不入账、并发交还唯一成功者 |
 
 ## 前后日志（反向样本）
 
